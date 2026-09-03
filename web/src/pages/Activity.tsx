@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Card, CardHeader, Chips, CommandTrail, EmptyState, ErrorBox, Loading, PageHeader, StatCard } from '@/components/ui';
 import { api } from '@/lib/api';
+import { CHART } from '@/lib/chartColors';
 import { EVENT_META, formatDateTime, hours, humanMinutes } from '@/lib/format';
 
 const TYPES = ['all', 'renewal', 'conversion', 'deployment', 'import', 'csr', 'ca'] as const;
@@ -34,12 +35,12 @@ export function Activity() {
         <div className="h-[180px]">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={summary.monthly} margin={{ top: 8, right: 4, left: -18, bottom: 0 }} barCategoryGap="30%">
-              <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
-              <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11 }} tickFormatter={(v) => `${Math.round(v / 60)}h`} />
-              <Tooltip cursor={{ fill: '#f1f5f9' }} content={({ active, payload }) => (active && payload?.length ? <div className="card px-3 py-2 text-[12px] shadow-lg"><div className="font-medium text-ink-900">{payload[0].payload.month}</div><div className="text-ink-600">{humanMinutes(payload[0].payload.minutes)} · {payload[0].payload.count} actions</div></div> : null)} />
+              <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: CHART.tick, fontSize: 12 }} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fill: CHART.tickMuted, fontSize: 11 }} tickFormatter={(v) => `${Math.round(v / 60)}h`} />
+              <Tooltip cursor={{ fill: CHART.cursor }} content={({ active, payload }) => (active && payload?.length ? <div className="card px-3 py-2 text-[12px] shadow-lg"><div className="font-medium text-ink-900">{payload[0].payload.month}</div><div className="text-ink-600">{humanMinutes(payload[0].payload.minutes)} · {payload[0].payload.count} actions</div></div> : null)} />
               <Bar dataKey="minutes" radius={[6, 6, 0, 0]}>
                 {summary.monthly.map((m, i) => (
-                  <Cell key={m.month} fill={i === summary.monthly.length - 1 ? '#0e7c7b' : '#7fd6d4'} />
+                  <Cell key={m.month} fill={i === summary.monthly.length - 1 ? CHART.brand : CHART.brandMuted} />
                 ))}
               </Bar>
             </BarChart>
