@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, CheckCircle2, Terminal } from 'lucide-react';
+import { ArrowRight, CheckCircle2, ChevronRight, Terminal } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { Breadcrumb } from '@/components/Breadcrumb';
+import { Link } from 'react-router-dom';
 import { FileDrop } from '@/components/FileDrop';
 import { useToast } from '@/components/Toast';
 import { Button, Card, CardHeader, Checkbox, CommandTrail, ErrorBox, Field, Input, LinkButton, PageHeader, Textarea } from '@/components/ui';
@@ -82,7 +82,11 @@ export function ImportCertificate() {
 
   return (
     <>
-      <Breadcrumb items={[{ label: 'Certificates', to: '/certificates' }, { label: 'Import' }]} />
+      <div className="mb-2">
+        <Link to="/certificates" className="text-[13px] text-ink-500 hover:text-ink-800 inline-flex items-center gap-1">
+          <ChevronRight className="size-3.5 rotate-180" /> Certificates
+        </Link>
+      </div>
       <PageHeader title="Import certificate" description="Drop a .pfx / .p12, or a .cer / .crt / .pem / .der plus its .key. Vigil unpacks it with OpenSSL, orders the chain and verifies the key." />
 
       <form
