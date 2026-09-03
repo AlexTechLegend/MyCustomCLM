@@ -8,6 +8,7 @@ import { DiagnosticsDrawer } from './DiagnosticsDrawer';
 import { HealthStrip } from './HealthStrip';
 import { Logo } from './Logo';
 import { ShortcutMap } from './ShortcutMap';
+import { ThemeToggle } from './ThemeToggle';
 import { api } from '@/lib/api';
 import { hours } from '@/lib/format';
 
@@ -127,6 +128,7 @@ export function Layout() {
             <div className="text-[12px] text-ink-500 mt-1.5 tnum">{data ? `${data.timeSaved.totalEvents} automated actions` : 'Loading…'}</div>
           </div>
           <div className="mt-3 px-1 text-[11px] text-ink-500 truncate">{data?.settings.organisation}</div>
+          <ThemeToggle className="mt-2 w-full justify-start" />
         </div>
       </aside>
       <main className="flex-1 ml-[256px] min-w-0">
