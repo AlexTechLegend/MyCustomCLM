@@ -26,15 +26,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       <div className="fixed bottom-5 right-5 z-[60] flex flex-col gap-2 w-[360px] max-w-[calc(100vw-2.5rem)]">
         {items.map((t) => (
-          <div key={t.id} className="card p-4 flex items-start gap-3 shadow-xl shadow-ink-950/10 animate-[fadeIn_150ms_ease-out]">
-            {t.tone === 'success' && <CheckCircle2 className="size-5 text-ok-600 shrink-0 mt-0.5" />}
-            {t.tone === 'error' && <AlertCircle className="size-5 text-crit-600 shrink-0 mt-0.5" />}
-            {t.tone === 'info' && <Info className="size-5 text-brand-600 shrink-0 mt-0.5" />}
+          <div key={t.id} className="card p-4 flex items-start gap-3 shadow-xl shadow-ink-950/20 animate-[fadeIn_150ms_ease-out]">
+            {t.tone === 'success' && <CheckCircle2 className="size-5 text-ok-fg shrink-0 mt-0.5" />}
+            {t.tone === 'error' && <AlertCircle className="size-5 text-crit-fg shrink-0 mt-0.5" />}
+            {t.tone === 'info' && <Info className="size-5 text-accent shrink-0 mt-0.5" />}
             <div className="min-w-0 flex-1">
-              <div className="text-sm font-medium text-ink-950">{t.title}</div>
-              {t.description && <div className={clsx('text-[13px] mt-0.5 break-words', t.tone === 'error' ? 'text-crit-700' : 'text-ink-500')}>{t.description}</div>}
+              <div className="text-sm font-medium text-text">{t.title}</div>
+              {t.description && <div className={clsx('text-[13px] mt-0.5 break-words', t.tone === 'error' ? 'text-crit-fg' : 'text-text-soft')}>{t.description}</div>}
             </div>
-            <button type="button" onClick={() => setItems((cur) => cur.filter((x) => x.id !== t.id))} className="text-ink-400 hover:text-ink-700" aria-label="Dismiss">
+            <button type="button" onClick={() => setItems((cur) => cur.filter((x) => x.id !== t.id))} className="text-text-soft hover:text-text" aria-label="Dismiss">
               <X className="size-4" />
             </button>
           </div>
