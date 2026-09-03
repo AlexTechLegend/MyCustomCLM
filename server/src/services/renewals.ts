@@ -23,10 +23,15 @@ import {
   type SubjectOverrides,
   type UploadedFile,
 } from '../openssl.js';
-import type { Certificate, KeyMode, Profile, Renewal, RenewalMethod, RenewalOutput, RenewalStatus } from '../types.js';
-import { getCertificate, readVault, replaceCertificateMaterial } from './certificates.js';
+import type { Certificate, Job, KeyMode, Profile, Renewal, RenewalMethod, RenewalOutput, RenewalStatus } from '../types.js';
+import { writeAudit } from './audit.js';
+import { getBlueprint, computeNextRenewalAt } from './blueprints.js';
+import { getCertificate, readVault, replaceCertificateMaterial, setCertificateNextRenewal } from './certificates.js';
 import { recordEvent } from './events.js';
 import { getIdentityTemplate } from './identities.js';
+import { completeJob, enqueueJob, failJob, hasActiveRenewalJob, markJobRunning, releaseCertLock, tryAcquireCertLock } from './jobs.js';
+import { emitNotification } from './notifications.js';
+import { executePipeline } from './pipelines.js';
 import { getProfile } from './profiles.js';
 import { getSettings } from './settings.js';
 
@@ -93,13 +98,143 @@ export interface StartRenewalInput extends SubjectOverrides {
   deploy: boolean;
   sans?: string[];
   identityTemplateId?: string;
+  /** Default true so the current UI keeps a synchronous response. */
+  runNow?: boolean;
+  pipelineId?: string | null;
 }
+
+export type StartRenewalResult = { renewal: Renewal; job: Job } | { queued: true; job: Job };
 
 function renewalDir(id: string) {
   return path.join(config.renewalsDir, id);
 }
 
-export async function startRenewal(certId: string, input: StartRenewalInput): Promise<Renewal> {
+function renewalInputFromPayload(payload: Record<string, unknown>): StartRenewalInput {
+  const method = String(payload.method ?? 'internal-ca') as RenewalMethod;
+  return {
+    method: method === 'self-signed' || method === 'csr' ? method : 'internal-ca',
+    keyMode: (typeof payload.keyMode === 'string' ? payload.keyMode : 'rsa-2048') as KeyMode,
+    validityDays: Number(payload.validityDays) || getSettings().defaultValidityDays,
+    profileIds: Array.isArray(payload.profileIds) ? payload.profileIds.map(String) : [],
+    deploy: payload.deploy === true,
+    sans: Array.isArray(payload.sans) ? payload.sans.map(String) : undefined,
+    identityTemplateId: typeof payload.identityTemplateId === 'string' ? payload.identityTemplateId : undefined,
+    commonName: typeof payload.commonName === 'string' ? payload.commonName : undefined,
+    country: typeof payload.country === 'string' ? payload.country : undefined,
+    state: typeof payload.state === 'string' ? payload.state : undefined,
+    locality: typeof payload.locality === 'string' ? payload.locality : undefined,
+    organisation: typeof payload.organisation === 'string' ? payload.organisation : undefined,
+    organisationalUnit: typeof payload.organisationalUnit === 'string' ? payload.organisationalUnit : undefined,
+    email: typeof payload.email === 'string' ? payload.email : undefined,
+    pipelineId: typeof payload.pipelineId === 'string' ? payload.pipelineId : payload.pipelineId === null ? null : undefined,
+    runNow: true,
+  };
+}
+
+export function queueRenewal(certId: string, input: StartRenewalInput): Job {
+  if (hasActiveRenewalJob(certId)) {
+    throw new Error('A renewal job is already queued or running for this certificate.');
+  }
+  return enqueueJob({
+    type: 'renewal',
+    certificateId: certId,
+    payload: { ...input, certificateId: certId },
+  });
+}
+
+/**
+ * Enqueue a renewal job. When `runNow` is true (default) the job is executed
+ * in-process so the existing UI still gets a synchronous Renewal.
+ */
+export async function startRenewal(certId: string, input: StartRenewalInput): Promise<StartRenewalResult> {
+  const runNow = input.runNow !== false;
+  if (!runNow) {
+    return { queued: true, job: queueRenewal(certId, input) };
+  }
+  const job = enqueueJob({
+    type: 'renewal',
+    certificateId: certId,
+    payload: { ...input, certificateId: certId },
+  });
+  markJobRunning(job.id);
+  try {
+    const renewal = await executeRenewal(certId, input, job.id);
+    completeJob(job.id, { renewalId: renewal.id, status: renewal.status });
+    return { renewal, job: { ...job, state: 'succeeded' } };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    failJob(job.id, msg, false);
+    throw err;
+  }
+}
+
+export async function runRenewalJob(jobId: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const certId = String(payload.certificateId ?? '');
+  if (!certId) throw new Error('Renewal job is missing certificateId');
+  const renewal = await executeRenewal(certId, renewalInputFromPayload(payload), jobId);
+  return { renewalId: renewal.id, status: renewal.status };
+}
+
+async function afterSuccessfulRenewal(renewal: Renewal, input: StartRenewalInput): Promise<void> {
+  emitNotification('renewal.succeeded', {
+    certificateId: renewal.certificateId,
+    renewalId: renewal.id,
+    newNotAfter: renewal.newNotAfter,
+  });
+  const cert = getCertificate(renewal.certificateId);
+  const blueprint = cert?.blueprintId ? getBlueprint(cert.blueprintId) : null;
+  if (cert && blueprint && renewal.newNotAfter) {
+    const next = computeNextRenewalAt(blueprint, renewal.newNotAfter);
+    setCertificateNextRenewal(cert.id, next);
+  }
+  const pipelineId = input.pipelineId ?? blueprint?.pipelineId ?? null;
+  if (pipelineId && renewal.status === 'completed') {
+    await executePipeline({
+      pipelineId,
+      certificateId: renewal.certificateId,
+      renewalId: renewal.id,
+      params: {
+        requiresApproval: blueprint?.renewalPolicy.requiresApproval ?? false,
+      },
+    });
+  }
+  writeAudit({
+    actorType: 'scheduler',
+    action: 'renewal.completed',
+    entityType: 'certificate',
+    entityId: renewal.certificateId,
+    after: { renewalId: renewal.id, newNotAfter: renewal.newNotAfter },
+  });
+}
+
+async function executeRenewal(certId: string, input: StartRenewalInput, jobId?: string): Promise<Renewal> {
+  const owner = jobId ? `renew:exec:${jobId}` : `renew:http:${certId}`;
+  if (!tryAcquireCertLock(certId, owner)) {
+    throw new Error('A renewal is already in progress for this certificate.');
+  }
+  try {
+    const renewal = await executeRenewalBody(certId, input);
+    if (renewal.status === 'completed') {
+      try {
+        await afterSuccessfulRenewal(renewal, input);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        emitNotification('pipeline.step_failed', { certificateId: certId, error: msg, after: 'renewal' });
+      }
+    }
+    return renewal;
+  } catch (err) {
+    emitNotification('renewal.failed', {
+      certificateId: certId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    throw err;
+  } finally {
+    releaseCertLock(certId, owner);
+  }
+}
+
+async function executeRenewalBody(certId: string, input: StartRenewalInput): Promise<Renewal> {
   const cert = getCertificate(certId);
   if (!cert) throw new Error('Certificate not found');
   const vault = await readVault(certId);

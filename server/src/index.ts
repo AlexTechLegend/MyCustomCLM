@@ -1,14 +1,32 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
-import { config, ensureDirs, preflightProblems } from './config.js';
+import { config, ensureDirs, preflightProblems, secretKeyMaterial } from './config.js';
 import { db, dbBackend } from './db.js';
 import { OpenSslError } from './openssl.js';
 import { api } from './routes.js';
+import { ensureBuiltinPipelines } from './services/pipelines.js';
+import { startScheduler } from './services/scheduler.js';
 
 for (const p of preflightProblems()) console.error(`✖ ${p}\n`);
 ensureDirs();
 db();
+ensureBuiltinPipelines();
+
+if (!secretKeyMaterial()) {
+  const row = db().prepare('SELECT COUNT(*) AS n FROM credentials').get() as { n: number };
+  if (Number(row.n) > 0) {
+    console.error(
+      '✖ VIGIL_SECRET_KEY is not set, but encrypted credentials already exist. Refusing to start rather than fall back to plaintext. Set VIGIL_SECRET_KEY and restart.',
+    );
+    process.exit(1);
+  }
+  console.warn(
+    '⚠ VIGIL_SECRET_KEY is not set. Creating or revealing credentials will fail (no plaintext fallback). Set a 64-char hex key or a strong passphrase before using the credential store.',
+  );
+}
+
+startScheduler();
 
 const app = express();
 app.disable('x-powered-by');
@@ -40,4 +58,6 @@ app.listen(config.port, () => {
   console.log(`Data directory: ${config.dataDir}`);
   console.log(`Database: ${dbBackend()}`);
   console.log(`OpenSSL: ${config.opensslVersion ?? 'not found'} (${config.opensslBin})`);
+  console.log(`Scheduler: ${config.schedulerEnabled ? `on every ${config.schedulerIntervalMs}ms` : 'disabled (VIGIL_SCHEDULER=0)'}`);
+  console.log(`Auth: ${config.authEnabled ? 'on (VIGIL_AUTH=1)' : 'off'}`);
 });

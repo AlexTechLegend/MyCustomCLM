@@ -1,5 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -65,6 +66,25 @@ function resolveOpensslBin(): { bin: string; version: string | null } {
 
 const openssl = resolveOpensslBin();
 
+/** Master key for AES-256-GCM credential encryption. Never persisted. */
+export function secretKeyMaterial(): Buffer | null {
+  const raw = process.env.VIGIL_SECRET_KEY?.trim();
+  if (!raw) return null;
+  // Accept 64-hex (32 bytes) or any passphrase (hashed via SHA-256).
+  if (/^[0-9a-fA-F]{64}$/.test(raw)) return Buffer.from(raw, 'hex');
+  return createHash('sha256').update(raw).digest();
+}
+
+export function requireSecretKey(): Buffer {
+  const key = secretKeyMaterial();
+  if (!key) {
+    throw new Error(
+      'VIGIL_SECRET_KEY is not set. Credential encryption refuses to run without it. Set a 64-char hex key or a strong passphrase in the environment (never store it in the database).',
+    );
+  }
+  return key;
+}
+
 export const config = {
   port: Number(process.env.PORT ?? 4180),
   repoRoot,
@@ -74,13 +94,21 @@ export const config = {
   renewalsDir: path.join(dataDir, 'renewals'),
   caDir: path.join(dataDir, 'ca'),
   tmpDir: path.join(dataDir, 'tmp'),
+  stagingDir: path.join(dataDir, 'staging'),
   webDist: path.join(repoRoot, 'web', 'dist'),
   opensslBin: openssl.bin,
   opensslVersion: openssl.version,
+  /** Tick every N ms. Default 45s. */
+  schedulerIntervalMs: Math.max(15_000, Number(process.env.VIGIL_SCHEDULER_INTERVAL_MS ?? 45_000) || 45_000),
+  /** Max jobs claimed per tick. */
+  schedulerBatchSize: Math.max(1, Number(process.env.VIGIL_SCHEDULER_BATCH ?? 3) || 3),
+  schedulerEnabled: process.env.VIGIL_SCHEDULER !== '0',
+  authEnabled: process.env.VIGIL_AUTH === '1',
+  leaseSeconds: Math.max(30, Number(process.env.VIGIL_JOB_LEASE_SECONDS ?? 120) || 120),
 };
 
 export function ensureDirs() {
-  for (const d of [config.dataDir, config.vaultDir, config.renewalsDir, config.caDir, config.tmpDir]) {
+  for (const d of [config.dataDir, config.vaultDir, config.renewalsDir, config.caDir, config.tmpDir, config.stagingDir]) {
     fs.mkdirSync(d, { recursive: true });
   }
 }

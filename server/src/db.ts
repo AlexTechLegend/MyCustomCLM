@@ -264,9 +264,184 @@ function migrate(d: Db) {
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS jobs (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      payload TEXT NOT NULL DEFAULT '{}',
+      state TEXT NOT NULL DEFAULT 'queued',
+      priority INTEGER NOT NULL DEFAULT 100,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      max_attempts INTEGER NOT NULL DEFAULT 5,
+      lease_owner TEXT,
+      lease_expires_at TEXT,
+      scheduled_for TEXT NOT NULL,
+      started_at TEXT,
+      finished_at TEXT,
+      error TEXT,
+      result TEXT,
+      certificate_id TEXT,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_jobs_state_sched ON jobs(state, scheduled_for);
+    CREATE INDEX IF NOT EXISTS idx_jobs_cert ON jobs(certificate_id);
+
+    CREATE TABLE IF NOT EXISTS hosts (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      hostname TEXT NOT NULL DEFAULT '',
+      address TEXT NOT NULL DEFAULT '',
+      platform TEXT NOT NULL DEFAULT 'other',
+      environment TEXT NOT NULL DEFAULT '',
+      owner TEXT NOT NULL DEFAULT '',
+      credential_id TEXT,
+      agent_status TEXT NOT NULL DEFAULT 'unknown',
+      agent_last_seen TEXT,
+      notes TEXT NOT NULL DEFAULT '',
+      tags TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS certificate_hosts (
+      certificate_id TEXT NOT NULL REFERENCES certificates(id) ON DELETE CASCADE,
+      host_id TEXT NOT NULL REFERENCES hosts(id) ON DELETE CASCADE,
+      PRIMARY KEY (certificate_id, host_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS credentials (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      username TEXT NOT NULL DEFAULT '',
+      secret_encrypted TEXT NOT NULL DEFAULT '',
+      secret_iv TEXT NOT NULL DEFAULT '',
+      secret_tag TEXT NOT NULL DEFAULT '',
+      description TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS pipelines (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      steps TEXT NOT NULL DEFAULT '[]',
+      is_builtin INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS pipeline_runs (
+      id TEXT PRIMARY KEY,
+      pipeline_id TEXT NOT NULL REFERENCES pipelines(id) ON DELETE CASCADE,
+      renewal_id TEXT,
+      certificate_id TEXT,
+      host_id TEXT,
+      state TEXT NOT NULL,
+      steps TEXT NOT NULL DEFAULT '[]',
+      params TEXT NOT NULL DEFAULT '{}',
+      approved_by TEXT,
+      approved_at TEXT,
+      started_at TEXT,
+      finished_at TEXT,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_pipeline_runs_state ON pipeline_runs(state);
+
+    CREATE TABLE IF NOT EXISTS blueprints (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      identity_template_id TEXT,
+      profile_ids TEXT NOT NULL DEFAULT '[]',
+      issuance_method TEXT NOT NULL DEFAULT 'internal-ca',
+      ca_template TEXT NOT NULL DEFAULT '',
+      key_mode TEXT NOT NULL DEFAULT 'rsa-2048',
+      validity_days INTEGER NOT NULL DEFAULT 397,
+      pipeline_id TEXT,
+      renewal_policy TEXT NOT NULL DEFAULT '{}',
+      maintenance_window_id TEXT,
+      notification_targets TEXT NOT NULL DEFAULT '[]',
+      version INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS maintenance_windows (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      weekday INTEGER NOT NULL,
+      start_time TEXT NOT NULL,
+      end_time TEXT NOT NULL,
+      timezone TEXT NOT NULL DEFAULT 'UTC',
+      recurrence TEXT NOT NULL DEFAULT 'weekly',
+      blackout_ranges TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      username TEXT NOT NULL UNIQUE,
+      display_name TEXT NOT NULL DEFAULT '',
+      email TEXT NOT NULL DEFAULT '',
+      password_hash TEXT NOT NULL DEFAULT '',
+      role TEXT NOT NULL DEFAULT 'viewer',
+      source TEXT NOT NULL DEFAULT 'local',
+      scope_tags TEXT NOT NULL DEFAULT '[]',
+      is_active INTEGER NOT NULL DEFAULT 1,
+      last_login_at TEXT,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS sessions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token_hash TEXT NOT NULL UNIQUE,
+      expires_at TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token_hash);
+
+    CREATE TABLE IF NOT EXISTS notification_targets (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      config TEXT NOT NULL DEFAULT '{}',
+      events TEXT NOT NULL DEFAULT '[]',
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id TEXT PRIMARY KEY,
+      actor_user_id TEXT,
+      actor_type TEXT NOT NULL,
+      action TEXT NOT NULL,
+      entity_type TEXT NOT NULL,
+      entity_id TEXT,
+      before_json TEXT,
+      after_json TEXT,
+      command_trail TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at);
+    CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_log(entity_type, entity_id);
+
+    CREATE TABLE IF NOT EXISTS certificate_locks (
+      certificate_id TEXT PRIMARY KEY REFERENCES certificates(id) ON DELETE CASCADE,
+      owner TEXT NOT NULL,
+      expires_at TEXT NOT NULL
+    );
   `);
   // Additive migrations for databases created before these columns existed.
   ensureColumn(d, 'certificates', 'destination_override', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(d, 'certificates', 'blueprint_id', 'TEXT');
+  ensureColumn(d, 'certificates', 'blueprint_version', 'INTEGER');
+  ensureColumn(d, 'certificates', 'next_renewal_at', 'TEXT');
+  ensureColumn(d, 'certificates', 'blueprint_sans', "TEXT NOT NULL DEFAULT '[]'");
   ensureColumn(d, 'profiles', 'scope', "TEXT NOT NULL DEFAULT 'general'");
   ensureColumn(d, 'profiles', 'server_tags', "TEXT NOT NULL DEFAULT '[]'");
   ensureColumn(d, 'profiles', 'certificate_ids', "TEXT NOT NULL DEFAULT '[]'");
