@@ -151,7 +151,7 @@ and a 6-month trend. Baselines are editable so the number reflects *your* team.
 
 ```
 web/     React 19 + Vite + TypeScript + Tailwind v4 + TanStack Query + Recharts
-server/  Node 22 + Express 5 + TypeScript + better-sqlite3 + system OpenSSL 3.x
+server/  Node 22.13+ + Express 5 + TypeScript + node:sqlite (built in) + system OpenSSL 3.x
 data/    SQLite db, vault, renewals, internal CA (git-ignored)
 ```
 

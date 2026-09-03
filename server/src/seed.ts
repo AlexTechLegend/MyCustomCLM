@@ -6,7 +6,7 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { config, ensureDirs } from './config.js';
+import { config, ensureDirs, preflightProblems } from './config.js';
 import { db, newId, nowIso } from './db.js';
 import { createCa, createCsr, generateKey, newLog, parseCertificate, readCaCert, signWithCa, selfSign, type Material } from './openssl.js';
 import { insertCertificate } from './services/certificates.js';
@@ -50,8 +50,23 @@ const ESTATE: SeedCert[] = [
 ];
 
 async function resetData() {
-  await fs.rm(config.dataDir, { recursive: true, force: true });
+  try {
+    await fs.rm(config.dataDir, { recursive: true, force: true });
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code === 'EBUSY' || code === 'EPERM' || code === 'ENOTEMPTY') {
+      throw new Error(
+        `Could not reset ${config.dataDir} (${code}). Another process is holding it open — stop the Vigil server (npm run dev / npm start) and any file explorer or editor looking at the data folder, then run the seed again.`,
+      );
+    }
+    throw e;
+  }
   ensureDirs();
+}
+
+function fail(message: string): never {
+  console.error(`\n✖ ${message}\n`);
+  process.exit(1);
 }
 
 async function issue(c: SeedCert, caCertPem: string | null): Promise<Material> {
@@ -82,7 +97,11 @@ function rand(seed: number) {
 }
 
 async function main() {
-  console.log('Resetting data directory…');
+  const problems = preflightProblems();
+  if (problems.length) fail(problems.join('\n\n✖ '));
+  console.log(`Using ${config.opensslVersion} (${config.opensslBin}) on Node ${process.versions.node}`);
+
+  console.log(`Resetting data directory ${config.dataDir}…`);
   await resetData();
   db();
 
@@ -200,10 +219,14 @@ async function main() {
   }
 
   await fs.rm(enterpriseDir, { recursive: true, force: true });
-  console.log(`\nSeed complete at ${nowIso()}. Demo destinations under ${destRoot}`);
+  console.log(`\n✔ Seed complete at ${nowIso()}. Demo destinations under ${destRoot}`);
+  console.log('  Next: npm run dev  →  http://localhost:5173');
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
+main().catch((e: unknown) => {
+  if (e instanceof Error && 'stderr' in e) {
+    const err = e as Error & { stderr: string; command: string };
+    fail(`${err.message}\n  command: ${err.command}\n  ${err.stderr.trim().split('\n').slice(0, 5).join('\n  ')}`);
+  }
+  fail(e instanceof Error ? e.message : String(e));
 });

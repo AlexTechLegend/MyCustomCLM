@@ -47,13 +47,28 @@ export async function openssl(
   const command = formatCommand(args);
   opts.log?.commands.push(command);
   return new Promise((resolve, reject) => {
-    // detached → no controlling TTY, so OpenSSL can never block on an interactive passphrase prompt.
-    const child = spawn(config.opensslBin, args, { cwd: opts.cwd, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+    // detached (POSIX) → no controlling TTY, so OpenSSL can never block on an interactive
+    // passphrase prompt. On Windows a detached child would get its own console instead, so we
+    // rely on windowsHide plus the explicit -passin arguments used throughout.
+    const child = spawn(config.opensslBin, args, {
+      cwd: opts.cwd,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: process.platform !== 'win32',
+      windowsHide: true,
+    });
     const out: Buffer[] = [];
     const err: Buffer[] = [];
     child.stdout.on('data', (d) => out.push(d));
     child.stderr.on('data', (d) => err.push(d));
-    child.on('error', (e) => reject(new OpenSslError(`Failed to start openssl: ${e.message}`, '', command)));
+    child.on('error', (e) =>
+      reject(
+        new OpenSslError(
+          `Failed to start OpenSSL ("${config.opensslBin}"): ${e.message}. Install OpenSSL 3 or set OPENSSL_BIN to the binary path.`,
+          '',
+          command,
+        ),
+      ),
+    );
     child.on('close', (code) => {
       const stderr = Buffer.concat(err).toString('utf8');
       const stdout = Buffer.concat(out);

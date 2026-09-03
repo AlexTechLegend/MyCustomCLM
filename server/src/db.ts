@@ -1,19 +1,74 @@
-import Database from 'better-sqlite3';
+import { createRequire } from 'node:module';
+import type { DatabaseSync, SQLInputValue } from 'node:sqlite';
+import './lib/quiet-sqlite-warning.js';
 import { config, ensureDirs } from './config.js';
 
-let _db: Database.Database | null = null;
+// Loaded lazily with require() so the experimental-warning filter above is installed first;
+// a static ESM import of a builtin is evaluated at link time, before any module body runs.
+const require = createRequire(import.meta.url);
+function loadSqlite(): typeof import('node:sqlite') {
+  return require('node:sqlite') as typeof import('node:sqlite');
+}
 
-export function db(): Database.Database {
+type Row = Record<string, unknown>;
+// Positional values, or a single object of named parameters (extra keys are ignored).
+type Params = unknown[];
+
+export interface Statement {
+  run(...params: Params): { changes: number | bigint; lastInsertRowid: number | bigint };
+  get(...params: Params): unknown;
+  all(...params: Params): unknown[];
+}
+
+export interface Db {
+  exec(sql: string): void;
+  prepare(sql: string): Statement;
+}
+
+let _db: Db | null = null;
+
+export function db(): Db {
   if (_db) return _db;
   ensureDirs();
-  _db = new Database(config.dbPath);
-  _db.pragma('journal_mode = WAL');
-  _db.pragma('foreign_keys = ON');
+  const { DatabaseSync } = loadSqlite();
+  const raw = new DatabaseSync(config.dbPath);
+  raw.exec('PRAGMA journal_mode = WAL');
+  raw.exec('PRAGMA foreign_keys = ON');
+  _db = wrap(raw);
   migrate(_db);
   return _db;
 }
 
-function migrate(d: Database.Database) {
+/**
+ * Thin adapter over node:sqlite. Named parameters are passed as plain objects; any keys the
+ * statement does not reference are dropped, so a full row object can be handed to a partial
+ * UPDATE without error.
+ */
+function wrap(raw: DatabaseSync): Db {
+  return {
+    exec: (sql) => raw.exec(sql),
+    prepare(sql) {
+      const stmt = raw.prepare(sql);
+      const named = new Set([...sql.matchAll(/@([A-Za-z_][A-Za-z0-9_]*)/g)].map((m) => m[1]));
+      const bind = (params: Params): SQLInputValue[] => {
+        if (params.length === 1 && params[0] !== null && typeof params[0] === 'object' && !Array.isArray(params[0]) && !(params[0] instanceof Uint8Array)) {
+          const src = params[0] as Record<string, SQLInputValue | undefined>;
+          const filtered: Record<string, SQLInputValue> = {};
+          for (const k of named) filtered[k] = src[k] === undefined ? null : (src[k] as SQLInputValue);
+          return [filtered as unknown as SQLInputValue];
+        }
+        return params.map((p) => (p === undefined ? null : p)) as SQLInputValue[];
+      };
+      return {
+        run: (...p) => stmt.run(...bind(p)),
+        get: (...p) => stmt.get(...bind(p)) as Row | undefined,
+        all: (...p) => stmt.all(...bind(p)) as Row[],
+      };
+    },
+  };
+}
+
+function migrate(d: Db) {
   d.exec(`
     CREATE TABLE IF NOT EXISTS certificates (
       id TEXT PRIMARY KEY,

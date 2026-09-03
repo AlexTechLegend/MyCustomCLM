@@ -29,7 +29,8 @@ it once with reference files. Every step runs through the system OpenSSL and is 
 
 ## Quick start
 
-Requirements: Node 22+, OpenSSL 3.x on `PATH`.
+Requirements: **Node 22.13 or newer** (uses the built-in `node:sqlite`, so there is nothing
+to compile) and **OpenSSL 3.x**.
 
 ```bash
 npm install
@@ -47,10 +48,36 @@ npm start
 ```
 
 Environment variables: `PORT` (default 4180), `VIGIL_DATA_DIR` (default `./data`),
-`OPENSSL_BIN` (default `openssl`).
+`OPENSSL_BIN` (auto-detected; set to override).
 
 > `npm run seed` resets the data directory. Run it before starting the server, or restart
 > the server afterwards.
+
+### Installing OpenSSL
+
+Vigil looks for OpenSSL on `PATH` and in the usual install locations, and prefers an
+OpenSSL 3 binary over LibreSSL / 1.1. If it is missing, the seed and the server tell you.
+
+| Platform | Install |
+|----------|---------|
+| Windows | `winget install ShiningLight.OpenSSL.Light` (adds `C:\Program Files\OpenSSL-Win64\bin`), or use the copy bundled with Git for Windows — Vigil finds both automatically. Re-open the terminal afterwards. |
+| macOS | `brew install openssl@3` — the system `openssl` is LibreSSL and is not sufficient. |
+| Linux | `sudo apt install openssl` / `sudo dnf install openssl` |
+
+To point at a specific binary: `OPENSSL_BIN=/path/to/openssl npm run seed`
+(PowerShell: `$env:OPENSSL_BIN="C:\path\to\openssl.exe"; npm run seed`).
+
+### Troubleshooting `npm run seed`
+
+- **"Node … is too old"** — install the current LTS from <https://nodejs.org> (22.13+ or 24+), then `npm install` again.
+- **"OpenSSL was not found"** — see the table above, or set `OPENSSL_BIN`.
+- **"Found LibreSSL …"** (macOS) — `brew install openssl@3`; Vigil picks it up automatically.
+- **"Could not reset … EBUSY / EPERM"** (Windows) — the server or an editor has the `data/`
+  folder open. Stop `npm run dev` / `npm start`, close Explorer windows on `data/`, retry.
+- **Command not found / workspace errors** — run from the repository root with npm 7+
+  (`npm --version`), after `npm install`.
+- Anything else: the seed prints the exact OpenSSL command and its stderr — paste that output
+  into an issue.
 
 ## The workflow
 
@@ -70,7 +97,7 @@ Environment variables: `PORT` (default 4180), `VIGIL_DATA_DIR` (default `./data`
 docs/PLAN.md          Product plan, design system, architecture, data model, API, OpenSSL catalogue
 docs/BUILD_PROMPT.md  The build prompt — the single statement of intent for this product
 brand/                logo.svg, mark.svg
-server/               Express 5 + TypeScript + better-sqlite3 + OpenSSL wrapper
+server/               Express 5 + TypeScript + node:sqlite + OpenSSL wrapper
 web/                  React 19 + Vite + Tailwind v4 + TanStack Query + Recharts
 data/                 (git-ignored) SQLite, vault, rendered renewals, internal CA
 ```

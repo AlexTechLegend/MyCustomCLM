@@ -1,11 +1,12 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
-import { config, ensureDirs } from './config.js';
+import { config, ensureDirs, preflightProblems } from './config.js';
 import { db } from './db.js';
-import { OpenSslError, opensslVersion } from './openssl.js';
+import { OpenSslError } from './openssl.js';
 import { api } from './routes.js';
 
+for (const p of preflightProblems()) console.error(`✖ ${p}\n`);
 ensureDirs();
 db();
 
@@ -34,8 +35,8 @@ if (fs.existsSync(config.webDist)) {
   app.get('/', (_req, res) => res.type('text/plain').send('Vigil API is running. Build the web app (npm run build) or start the Vite dev server.'));
 }
 
-app.listen(config.port, async () => {
+app.listen(config.port, () => {
   console.log(`Vigil server listening on http://localhost:${config.port}`);
   console.log(`Data directory: ${config.dataDir}`);
-  console.log(`OpenSSL: ${await opensslVersion()}`);
+  console.log(`OpenSSL: ${config.opensslVersion ?? 'not found'} (${config.opensslBin})`);
 });
