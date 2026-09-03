@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronRight, Eye, FileSearch, FolderOutput, GripVertical, Plus, Sparkles, Trash2, Wrench } from 'lucide-react';
+import { Eye, FileSearch, FolderOutput, GripVertical, Plus, Sparkles, Trash2, Wrench } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Breadcrumb } from '@/components/Breadcrumb';
 import { FileDrop } from '@/components/FileDrop';
 import { FormatPreviewPane } from '@/components/FormatPreview';
 import { useToast } from '@/components/Toast';
@@ -96,11 +97,7 @@ export function ProfileEditor() {
 
   return (
     <>
-      <div className="mb-2">
-        <Link to="/profiles" className="text-[13px] text-ink-500 hover:text-ink-800 inline-flex items-center gap-1">
-          <ChevronRight className="size-3.5 rotate-180" /> Output profiles
-        </Link>
-      </div>
+      <Breadcrumb items={[{ label: 'Output profiles', to: '/profiles' }, { label: isNew ? 'New profile' : form.name || 'Profile' }]} />
       <PageHeader
         title={isNew ? 'New output profile' : form.name || 'Profile'}
         description="Choose the formats you want delivered on every renewal — build them from the catalogue, or learn them from your own reference files. Set a deploy location and Vigil will copy the files there."

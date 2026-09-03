@@ -10,6 +10,7 @@ import { Profiles } from './pages/Profiles';
 import { Renew } from './pages/Renew';
 import { Settings } from './pages/Settings';
 import { Identities } from './pages/Identities';
+import { Renewals } from './pages/Renewals';
 import { Tags } from './pages/Tags';
 
 export default function App() {
@@ -21,6 +22,7 @@ export default function App() {
         <Route path="certificates/import" element={<ImportCertificate />} />
         <Route path="certificates/:id" element={<CertificateDetail />} />
         <Route path="certificates/:id/renew" element={<Renew />} />
+        <Route path="renewals" element={<Renewals />} />
         <Route path="profiles" element={<Profiles />} />
         <Route path="profiles/new" element={<ProfileEditor />} />
         <Route path="profiles/:id" element={<ProfileEditor />} />
