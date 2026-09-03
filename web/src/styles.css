@@ -452,3 +452,18 @@ html[data-theme='light'] {
   scrollbar-width: thin;
   scrollbar-color: var(--line-strong) transparent;
 }
+
+/* Grid tiles have a fixed cell height; stretch the tile's card to fill it and scroll any overflow inside the card. */
+@utility tile-fill {
+  height: 100%;
+  & > * {
+    height: 100%;
+  }
+  & > .card,
+  & > a > .card {
+    height: 100%;
+    overflow: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+}
