@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Building2, CheckCircle2, ChevronRight, Download, FileSignature, FolderOutput, Landmark, Plus, RefreshCw, Terminal, Timer, X, XCircle } from 'lucide-react';
+import { AlertTriangle, Building2, Check, CheckCircle2, Download, FileSignature, FolderOutput, Landmark, Plus, RefreshCw, Terminal, Timer, X, XCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Breadcrumb } from '@/components/Breadcrumb';
+import { CopyButton } from '@/components/CopyButton';
 import { FileDrop } from '@/components/FileDrop';
 import { useToast } from '@/components/Toast';
-import { Badge, Button, Card, CardHeader, Checkbox, CodeBlock, CommandTrail, ErrorBox, Field, Input, LinkButton, Loading, PageHeader, RadioCard, Select, StatusBadge, Toggle } from '@/components/ui';
+import { Badge, Button, Card, CardHeader, Checkbox, CodeBlock, CommandTrail, ErrorBox, Field, Input, LinkButton, Loading, Modal, PageHeader, RadioCard, Select, StatusBadge, Toggle } from '@/components/ui';
 import { api } from '@/lib/api';
 import { bytes, FORMAT_SHORT, formatDate, formatNeedsKey, humanMinutes } from '@/lib/format';
 import type { Certificate, IdentityTemplate, KeyMode, Renewal, RenewalMethod } from '@/types';
@@ -21,11 +23,13 @@ export function Renew() {
 
   return (
     <>
-      <div className="mb-2">
-        <Link to={`/certificates/${c.id}`} className="text-[13px] text-ink-500 hover:text-ink-800 inline-flex items-center gap-1">
-          <ChevronRight className="size-3.5 rotate-180" /> {c.name}
-        </Link>
-      </div>
+      <Breadcrumb
+        items={[
+          { label: 'Certificates', to: '/certificates' },
+          { label: c.name, to: `/certificates/${c.id}` },
+          { label: 'Renew' },
+        ]}
+      />
       {renewalId ? (
         <RenewalResult renewalId={renewalId} certId={c.id} />
       ) : (
@@ -136,6 +140,8 @@ function RenewForm({ cert }: { cert: Certificate }) {
     },
   });
 
+  const [confirm, setConfirm] = useState(false);
+
   const selected = (profiles.data ?? []).filter((p) => profileIds.includes(p.id));
   const destinations = destinationOverride
     ? [destinationOverride]
@@ -143,6 +149,94 @@ function RenewForm({ cert }: { cert: Certificate }) {
   const fileCount = selected.reduce((n, p) => n + p.outputs.length, 0);
   const b = settings.data?.baselines;
   const estimate = b ? (method === 'csr' ? b.csr : 0) + b.renewal + b.conversion * fileCount + (deploy ? b.deployment * Math.max(destinations.length, destinations.length ? 1 : 0) : 0) : 0;
+
+  const keyNeedsVault = selected.some((p) => p.outputs.some((o) => formatNeedsKey(o.format))) && keyMode === 'reuse' && !hasKey;
+  const methodFail = method === 'internal-ca' && ca.data?.exists === false;
+  const cnFail = !commonName.trim();
+  const sansEmpty = sans.length === 0;
+  const cnMissingFromSans = Boolean(commonName.trim()) && !sans.includes(commonName.trim());
+  const outputsWarn = selected.length === 0;
+  const deployWarn = deploy && destinations.length === 0;
+  const validityWarn = method !== 'csr' && validityDays > 397;
+
+  type Tone = 'ok' | 'fail' | 'warn';
+  const checks: { id: string; href: string; label: string; tone: Tone; detail: string }[] = [
+    {
+      id: 'method',
+      href: '#method',
+      label: 'Issuance method',
+      tone: methodFail ? 'fail' : 'ok',
+      detail: methodFail ? 'No internal CA exists' : method === 'internal-ca' ? 'Internal CA' : method === 'self-signed' ? 'Self-signed' : 'External CA CSR',
+    },
+    {
+      id: 'cn',
+      href: '#names',
+      label: 'Common name',
+      tone: cnFail ? 'fail' : 'ok',
+      detail: cnFail ? 'Required' : commonName.trim(),
+    },
+    {
+      id: 'sans',
+      href: '#names',
+      label: 'SANs',
+      tone: sansEmpty || cnMissingFromSans ? 'warn' : 'ok',
+      detail: sansEmpty
+        ? 'None listed — browsers may reject this'
+        : cnMissingFromSans
+          ? 'Common name is not among the SANs'
+          : `${sans.length} name${sans.length === 1 ? '' : 's'}`,
+    },
+    {
+      id: 'key',
+      href: '#key',
+      label: 'Key',
+      tone: keyNeedsVault ? 'fail' : 'ok',
+      detail: keyNeedsVault
+        ? 'Outputs need a private key, but reuse is selected and none is in the vault'
+        : keyMode === 'reuse'
+          ? 'Reuse existing key'
+          : `New ${keyMode.toUpperCase().replace('-', ' ')}`,
+    },
+    {
+      id: 'outputs',
+      href: '#outputs',
+      label: 'Outputs',
+      tone: outputsWarn ? 'warn' : 'ok',
+      detail: outputsWarn ? 'No profile selected — nothing will be rendered' : `${fileCount} file${fileCount === 1 ? '' : 's'} across ${selected.length} profile${selected.length === 1 ? '' : 's'}`,
+    },
+    {
+      id: 'deploy',
+      href: '#outputs',
+      label: 'Deploy',
+      tone: deployWarn ? 'warn' : 'ok',
+      detail: !deploy
+        ? 'Files will not be written to disk'
+        : destinations.length === 0
+          ? 'Deploy is on but no destination is set'
+          : `${destinations.length} path${destinations.length === 1 ? '' : 's'}`,
+    },
+    {
+      id: 'validity',
+      href: '#key',
+      label: 'Validity',
+      tone: validityWarn ? 'warn' : 'ok',
+      detail: method === 'csr' ? 'Set by the external CA' : validityWarn ? `${validityDays} days exceeds the 397-day public-CA cap` : `${validityDays} days`,
+    },
+  ];
+
+  const blocking = checks.filter((c) => c.tone === 'fail');
+  const blocked = blocking.length > 0;
+  const blockingReason = blocking[0]?.detail;
+
+  const methodLabel = method === 'internal-ca' ? 'Internal CA' : method === 'self-signed' ? 'Self-signed' : 'External CA CSR';
+  const keyLabel = keyMode === 'reuse' ? 'Reuse the vaulted private key' : `Generate a new ${keyMode.toUpperCase().replace('-', ' ')} key`;
+  const willWrite = deploy && destinations.length > 0;
+  const confirmAction =
+    method === 'csr' ? 'Generate CSR' : willWrite ? 'Issue and deploy' : 'Issue';
+
+  const jump = (href: string) => {
+    document.querySelector(href)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   return (
     <>
@@ -156,6 +250,7 @@ function RenewForm({ cert }: { cert: Certificate }) {
       />
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <div className="xl:col-span-2 space-y-6">
+          <div id="method">
           <Card>
             <CardHeader title="1. Issuance method" />
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -171,7 +266,9 @@ function RenewForm({ cert }: { cert: Certificate }) {
               <RadioCard checked={method === 'self-signed'} onChange={() => setMethod('self-signed')} icon={<FileSignature className="size-5" />} title="Self-signed" description="For labs and development. No trust chain." />
             </div>
           </Card>
+          </div>
 
+          <div id="names">
           <Card>
             <CardHeader
               title="2. Names"
@@ -224,7 +321,9 @@ function RenewForm({ cert }: { cert: Certificate }) {
               </div>
             </div>
           </Card>
+          </div>
 
+          <div id="identity">
           <Card>
             <CardHeader
               title="3. Identity"
@@ -269,7 +368,9 @@ function RenewForm({ cert }: { cert: Certificate }) {
               </Field>
             </div>
           </Card>
+          </div>
 
+          <div id="key">
           <Card>
             <CardHeader title="4. Key and validity" />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -288,7 +389,9 @@ function RenewForm({ cert }: { cert: Certificate }) {
               </Field>
             </div>
           </Card>
+          </div>
 
+          <div id="outputs">
           <Card>
             <CardHeader title="5. Outputs" description="General profiles always appear. Specialized profiles only show when this certificate matches their tags or assignments." action={<LinkButton to="/profiles/new" size="sm" variant="ghost">New profile</LinkButton>} />
             {profiles.data?.length ? (
@@ -339,17 +442,47 @@ function RenewForm({ cert }: { cert: Certificate }) {
               />
             </div>
           </Card>
+          </div>
 
           <ErrorBox error={start.error} />
-          <div className="flex items-center gap-2">
-            <Button variant="primary" size="lg" loading={start.isPending} icon={<RefreshCw className="size-4" />} onClick={() => start.mutate()} disabled={method === 'internal-ca' && !ca.data?.exists}>
+          <div className="flex items-center gap-3 flex-wrap">
+            <Button
+              variant="primary"
+              size="lg"
+              icon={<RefreshCw className="size-4" />}
+              onClick={() => setConfirm(true)}
+              disabled={blocked}
+            >
               {method === 'csr' ? 'Generate key & CSR' : 'Renew now'}
             </Button>
             <LinkButton to={`/certificates/${certId}`} variant="ghost" size="lg">Cancel</LinkButton>
+            {blocked && <span className="text-[13px] text-crit-600">{blockingReason}</span>}
           </div>
         </div>
 
-        <div className="space-y-6">
+        <div className="space-y-6 xl:sticky xl:top-6 xl:self-start xl:max-h-[calc(100vh-4.5rem)] xl:overflow-y-auto scrollbar-thin">
+          <Card>
+            <CardHeader title="Readiness" />
+            <ul className="space-y-1.5">
+              {checks.map((c) => (
+                <li key={c.id}>
+                  <button
+                    type="button"
+                    onClick={() => jump(c.href)}
+                    className="w-full flex items-start gap-2 rounded-lg px-1.5 py-1.5 text-left hover:bg-ink-50 transition-colors"
+                  >
+                    {c.tone === 'ok' && <Check className="size-3.5 text-ok-600 mt-0.5 shrink-0" />}
+                    {c.tone === 'fail' && <X className="size-3.5 text-crit-600 mt-0.5 shrink-0" />}
+                    {c.tone === 'warn' && <AlertTriangle className="size-3.5 text-warn-600 mt-0.5 shrink-0" />}
+                    <span className="min-w-0">
+                      <span className="block text-[13px] font-medium text-ink-900">{c.label}</span>
+                      <span className={`block text-[12px] ${c.tone === 'fail' ? 'text-crit-600' : c.tone === 'warn' ? 'text-warn-700' : 'text-ink-500'}`}>{c.detail}</span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </Card>
           <Card>
             <CardHeader title="What will happen" />
             <ol className="text-[13px] text-ink-700 space-y-2 list-decimal pl-4">
@@ -371,11 +504,77 @@ function RenewForm({ cert }: { cert: Certificate }) {
             <div className="text-[28px] font-semibold text-brand-800 tnum mt-1 leading-none">{humanMinutes(estimate)}</div>
             <p className="text-[12px] text-brand-700/80 mt-2">Based on your baselines in Settings.</p>
           </Card>
-          {selected.some((p) => p.outputs.some((o) => formatNeedsKey(o.format))) && keyMode === 'reuse' && !hasKey && (
+          {keyNeedsVault && (
             <ErrorBox error={new Error('Selected outputs need a private key but none is in the vault. Choose a new key.')} />
           )}
         </div>
       </div>
+      <Modal
+        open={confirm}
+        onClose={() => setConfirm(false)}
+        title={
+          method === 'csr'
+            ? 'Generate a CSR?'
+            : willWrite
+              ? 'Issue and deploy this certificate?'
+              : 'Issue this certificate?'
+        }
+        description={
+          method === 'csr'
+            ? 'A certificate signing request will be generated. Nothing is issued and no files are written to disk until you upload the signed certificate.'
+            : willWrite
+              ? 'This issues a new certificate and writes files to the destinations below.'
+              : 'This issues a new certificate. No files will be written to disk.'
+        }
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setConfirm(false)}>Cancel</Button>
+            <Button
+              variant="primary"
+              loading={start.isPending}
+              onClick={() => start.mutate()}
+            >
+              {confirmAction}
+            </Button>
+          </>
+        }
+      >
+        <dl className="text-[13px] space-y-3">
+          <div>
+            <dt className="text-ink-500">Method</dt>
+            <dd className="text-ink-900 mt-0.5">
+              {methodLabel}
+              {method !== 'csr' && <span className="text-ink-500"> · {validityDays} days</span>}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-ink-500">Key</dt>
+            <dd className="text-ink-900 mt-0.5">{keyLabel}</dd>
+          </div>
+          <div>
+            <dt className="text-ink-500">Names</dt>
+            <dd className="text-ink-900 mt-0.5 font-mono text-[12.5px]">
+              {commonName || '—'}
+              <span className="font-sans text-ink-500"> · {sans.length} SAN{sans.length === 1 ? '' : 's'}</span>
+            </dd>
+          </div>
+          <div>
+            <dt className="text-ink-500">Destinations</dt>
+            <dd className="mt-1">
+              {method === 'csr' || !willWrite ? (
+                <p className="text-ink-600">No files will be written.</p>
+              ) : (
+                <ul className="space-y-1">
+                  {destinations.map((d) => (
+                    <li key={d} className="font-mono text-[12.5px] text-ink-900 break-all">{d}</li>
+                  ))}
+                </ul>
+              )}
+            </dd>
+          </div>
+        </dl>
+        <ErrorBox error={start.error} className="mt-3" />
+      </Modal>
     </>
   );
 }
@@ -413,7 +612,7 @@ function RenewalResult({ renewalId, certId }: { renewalId: string; certId: strin
             <Card>
               <CardHeader title="Certificate signing request" description={`${r.keyMode === 'reuse' ? 'Existing key' : 'New ' + r.keyMode.toUpperCase().replace('-', ' ') + ' key'} · generated ${formatDate(r.createdAt)}`} action={<a href={`/api/renewals/${r.id}/csr`} className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-ink-200 text-[13px] font-medium text-ink-800 hover:bg-ink-50"><Download className="size-3.5" /> Download .csr</a>} />
               <CodeBlock className="max-h-[260px] overflow-y-auto">{r.csrPem ?? ''}</CodeBlock>
-              <Button size="sm" variant="ghost" className="mt-3" onClick={() => navigator.clipboard.writeText(r.csrPem ?? '').then(() => toast.success('CSR copied'))}>Copy to clipboard</Button>
+              <CopyButton value={r.csrPem ?? ''} label="Copy to clipboard" success="CSR copied" className="mt-3" />
             </Card>
             <Card>
               <CardHeader title="Upload the signed certificate" description="Include the issuer chain (.cer/.pem/.p7b) if the CA provided one; otherwise the previous chain is reused when it still matches." />

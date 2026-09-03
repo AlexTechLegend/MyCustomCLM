@@ -21,7 +21,7 @@ async function tryJson(url: string): Promise<unknown | null> {
 function pickTime(body: unknown): string | null {
   if (!body || typeof body !== 'object') return null;
   const o = body as Record<string, unknown>;
-  for (const k of ['lastRunAt', 'lastRun', 'ranAt', 'completedAt', 'updatedAt']) {
+  for (const k of ['lastTickAt', 'lastRunAt', 'lastRun', 'ranAt', 'completedAt', 'updatedAt']) {
     if (typeof o[k] === 'string' && o[k]) return o[k] as string;
   }
   return null;
