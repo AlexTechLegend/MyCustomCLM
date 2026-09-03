@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { Activity } from './pages/Activity';
+import { Calendar } from './pages/Calendar';
 import { CertificateDetail } from './pages/CertificateDetail';
 import { Certificates } from './pages/Certificates';
 import { Dashboard } from './pages/Dashboard';
@@ -8,9 +9,9 @@ import { ImportCertificate } from './pages/ImportCertificate';
 import { ProfileEditor } from './pages/ProfileEditor';
 import { Profiles } from './pages/Profiles';
 import { Renew } from './pages/Renew';
+import { Renewals } from './pages/Renewals';
 import { Settings } from './pages/Settings';
 import { Identities } from './pages/Identities';
-import { Renewals } from './pages/Renewals';
 import { Tags } from './pages/Tags';
 
 export default function App() {
@@ -28,6 +29,7 @@ export default function App() {
         <Route path="profiles/:id" element={<ProfileEditor />} />
         <Route path="identities" element={<Identities />} />
         <Route path="tags" element={<Tags />} />
+        <Route path="calendar" element={<Calendar />} />
         <Route path="activity" element={<Activity />} />
         <Route path="settings" element={<Settings />} />
         <Route path="*" element={<Navigate to="/" replace />} />

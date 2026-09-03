@@ -3,6 +3,7 @@ import { Download, Landmark, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useToast } from '@/components/Toast';
 import { Button, Card, CardHeader, CodeBlock, ErrorBox, Field, Input, KeyValue, Loading, Modal, PageHeader } from '@/components/ui';
+import { setSetupDismissed, setupDismissed } from '@/lib/dashboardStore';
 import { api } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import type { Settings as SettingsT } from '@/types';
@@ -134,6 +135,18 @@ export function Settings() {
             ) : (
               <ErrorBox error={system.error} />
             )}
+          </Card>
+          <Card>
+            <CardHeader title="First-run checklist" description="The dashboard hides the setup rail after you dismiss it. Bring it back at any time." />
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setSetupDismissed(false);
+                toast.success('Checklist will show on the dashboard');
+              }}
+            >
+              {setupDismissed() ? 'Show checklist on dashboard' : 'Checklist is visible'}
+            </Button>
           </Card>
           <Card className="bg-ink-50/60">
             <h3 className="text-[13px] font-semibold text-ink-800 mb-2">Security notes</h3>

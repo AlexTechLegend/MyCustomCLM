@@ -11,6 +11,7 @@ const GO_TO: { label: string; to: string; keywords?: string }[] = [
   { label: 'Dashboard', to: '/' },
   { label: 'Certificates', to: '/certificates' },
   { label: 'Renewals', to: '/renewals' },
+  { label: 'Expiry calendar', to: '/calendar', keywords: 'schedule expiry' },
   { label: 'Output profiles', to: '/profiles' },
   { label: 'Identity templates', to: '/identities' },
   { label: 'Tags & groups', to: '/tags' },
@@ -36,8 +37,17 @@ function certHaystack(c: Certificate) {
   return [c.name, c.commonName, c.issuer, c.issuerCommonName, c.serial, ...c.sans, ...c.tags].join(' ');
 }
 
-export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+export function CommandPalette({
+  open: openProp,
+  onOpenChange,
+}: {
+  open?: boolean;
+  onOpenChange?: (v: boolean) => void;
+} = {}) {
   const nav = useNavigate();
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = openProp ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
   const [q, setQ] = useState('');
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -68,22 +78,22 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
       const inField = !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
       if ((e.key === 'k' || e.key === 'K') && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
-        onOpenChange(!open);
+        setOpen(!open);
         return;
       }
       if (e.key === '/' && !inField && !open) {
         e.preventDefault();
-        onOpenChange(true);
+        setOpen(true);
         return;
       }
       if (e.key === 'Escape' && open) {
         e.preventDefault();
-        onOpenChange(false);
+        setOpen(false);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, onOpenChange]);
+  }, [open, setOpen]);
 
   useEffect(() => {
     if (!open) {
@@ -163,7 +173,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
   }, [active, open, flat.length]);
 
   const go = (item: Result) => {
-    onOpenChange(false);
+    setOpen(false);
     nav(item.to);
   };
 
@@ -173,7 +183,7 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
 
   return (
     <div className="fixed inset-0 z-[70] flex items-start justify-center pt-[12vh] px-4">
-      <div className="absolute inset-0 bg-ink-950/45 backdrop-blur-md" onClick={() => onOpenChange(false)} />
+      <div className="absolute inset-0 bg-ink-950/45 backdrop-blur-md" onClick={() => setOpen(false)} />
       <div
         role="dialog"
         aria-modal
