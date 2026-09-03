@@ -277,11 +277,11 @@ export function RadioCard({ checked, onChange, title, description, icon, disable
 
 export function CodeBlock({ children, className, lines = false }: { children: string; className?: string; lines?: boolean }) {
   return (
-    <pre className={clsx('rounded-xl bg-code text-ink-200 text-[12px] leading-5 font-mono p-4 overflow-x-auto scrollbar-thin', className)}>
+    <pre className={clsx('rounded-xl bg-code text-code-fg text-[12px] leading-5 font-mono p-4 overflow-x-auto scrollbar-thin', className)}>
       {lines
         ? children.split('\n').map((l, i) => (
             <div key={i} className="flex gap-4">
-              <span className="text-ink-500 select-none w-5 text-right shrink-0">{i + 1}</span>
+              <span className="text-code-muted select-none w-5 text-right shrink-0">{i + 1}</span>
               <span className="whitespace-pre-wrap break-all">{l}</span>
             </div>
           ))
@@ -297,7 +297,7 @@ export function CommandTrail({ commands }: { commands: string[] }) {
       {commands.map((c, i) => (
         <div key={i} className="flex gap-3 text-[12px] leading-5 font-mono">
           <span className="text-brand-400 select-none shrink-0">$</span>
-          <span className="text-ink-200 whitespace-pre-wrap break-all">{c}</span>
+          <span className="text-code-fg whitespace-pre-wrap break-all">{c}</span>
         </div>
       ))}
     </div>
@@ -319,19 +319,25 @@ export function KeyValue({ items, className }: { items: { label: string; value: 
 
 export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: { id: T; label: ReactNode; count?: number }[]; value: T; onChange: (v: T) => void }) {
   return (
-    <div className="flex items-center gap-1 border-b border-line">
+    <div className="inline-flex flex-wrap items-center gap-0.5 rounded-xl border border-line bg-canvas p-1">
       {tabs.map((t) => (
         <button
           key={t.id}
           type="button"
           onClick={() => onChange(t.id)}
           className={clsx(
-            '-mb-px px-3.5 h-10 text-sm font-medium border-b-2 transition-colors inline-flex items-center gap-2',
-            value === t.id ? 'border-accent text-text' : 'border-transparent text-text-soft hover:text-text',
+            'px-3.5 h-9 text-sm font-medium rounded-lg transition-colors inline-flex items-center gap-2 border',
+            value === t.id
+              ? 'bg-surface text-text border-line shadow-sm'
+              : 'bg-transparent text-text-mid border-transparent hover:text-text hover:bg-surface/70',
           )}
         >
           {t.label}
-          {t.count !== undefined && <span className={clsx('rounded-md px-1.5 text-[11px] tnum', value === t.id ? 'bg-accent-soft text-accent' : 'bg-surface text-text-mid')}>{t.count}</span>}
+          {t.count !== undefined && (
+            <span className={clsx('rounded-md px-1.5 text-[11px] tnum border', value === t.id ? 'bg-accent-soft text-accent border-transparent' : 'bg-surface text-text-mid border-line')}>
+              {t.count}
+            </span>
+          )}
         </button>
       ))}
     </div>
@@ -340,7 +346,7 @@ export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: { id: 
 
 export function Chips<T extends string>({ options, value, onChange }: { options: { id: T; label: ReactNode; count?: number }[]; value: T; onChange: (v: T) => void }) {
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
+    <div className="inline-flex flex-wrap items-center gap-0.5 rounded-xl border border-line bg-canvas p-1">
       {options.map((o) => (
         <button
           key={o.id}
@@ -348,11 +354,13 @@ export function Chips<T extends string>({ options, value, onChange }: { options:
           onClick={() => onChange(o.id)}
           className={clsx(
             'h-8 rounded-lg px-3 text-[13px] font-medium border transition-colors inline-flex items-center gap-1.5',
-            value === o.id ? 'bg-text text-canvas border-text' : 'bg-surface text-text-mid border-line hover:border-line-strong hover:text-text',
+            value === o.id
+              ? 'bg-brand-600 text-white border-brand-600 shadow-sm'
+              : 'bg-transparent text-text-mid border-transparent hover:bg-surface hover:text-text hover:border-line',
           )}
         >
           {o.label}
-          {o.count !== undefined && <span className={clsx('tnum text-[11px]', value === o.id ? 'text-canvas/70' : 'text-text-soft')}>{o.count}</span>}
+          {o.count !== undefined && <span className={clsx('tnum text-[11px]', value === o.id ? 'text-white/80' : 'text-text-soft')}>{o.count}</span>}
         </button>
       ))}
     </div>
@@ -369,8 +377,8 @@ export function Modal({ open, onClose, title, description, children, footer, wid
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-ink-950/45 backdrop-blur-md" onClick={onClose} />
-      <div role="dialog" aria-modal className={clsx('relative w-full card p-0 shadow-2xl shadow-ink-950/25 max-h-[92vh] overflow-y-auto', width)}>
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-md" onClick={onClose} />
+      <div role="dialog" aria-modal className={clsx('relative w-full card p-0 shadow-2xl shadow-black/25 max-h-[92vh] overflow-y-auto', width)}>
         <div className="flex items-start justify-between gap-4 px-6 pt-6">
           <div>
             <h2 className="text-lg">{title}</h2>

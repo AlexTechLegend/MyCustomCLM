@@ -12,13 +12,13 @@ export function FolderTree({
   highlight?: string;
 }) {
   return (
-    <div className="rounded-xl bg-code text-ink-200 overflow-hidden">
-      <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-white/8 text-[12px]">
+    <div className="rounded-xl bg-code text-code-fg overflow-hidden border border-white/10">
+      <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-white/10 text-[12px]">
         <Folder className="size-3.5 text-brand-300" />
-        <span className="font-mono truncate text-ink-300">{directory || 'destination folder'}</span>
+        <span className="font-mono truncate text-code-muted">{directory || 'destination folder'}</span>
       </div>
       {files.length === 0 ? (
-        <p className="px-3.5 py-4 text-[12px] text-ink-400">Select formats to preview the folder.</p>
+        <p className="px-3.5 py-4 text-[12px] text-code-muted">Select formats to preview the folder.</p>
       ) : (
         <ul className="py-1.5">
           {files.map((f) => {
@@ -26,11 +26,11 @@ export function FolderTree({
             return (
               <li
                 key={f.filename}
-                className={`flex items-center gap-2.5 px-3.5 py-1.5 text-[12px] font-mono ${on ? 'bg-brand-500/25 text-white' : 'text-ink-300'}`}
+                className={`flex items-center gap-2.5 px-3.5 py-1.5 text-[12px] font-mono ${on ? 'bg-brand-500/25 text-white' : 'text-code-fg'}`}
               >
-                <FileText className={`size-3.5 shrink-0 ${on ? 'text-brand-300' : 'text-ink-500'}`} />
+                <FileText className={`size-3.5 shrink-0 ${on ? 'text-brand-300' : 'text-code-muted'}`} />
                 <span className="truncate">{f.filename}</span>
-                {f.label && <span className="ml-auto text-[10px] text-ink-500 truncate max-w-[40%]">{f.label}</span>}
+                {f.label && <span className="ml-auto text-[10px] text-code-muted truncate max-w-[40%]">{f.label}</span>}
               </li>
             );
           })}
@@ -46,15 +46,15 @@ export function ContentsPreview({ spec }: { spec: Pick<OutputSpec, 'format' | 'f
     <div className="rounded-xl bg-code overflow-hidden">
       <div className="flex items-center justify-between gap-3 px-3.5 py-2.5 border-b border-white/8">
         <span className="text-[12px] font-medium text-white truncate">{preview.heading}</span>
-        <span className="text-[10px] uppercase tracking-[0.12em] text-ink-400 shrink-0">
+        <span className="text-[10px] uppercase tracking-[0.12em] text-code-muted shrink-0">
           {preview.kind === 'pem' ? 'PEM text' : preview.kind === 'pkcs12' ? 'PKCS#12' : 'Binary'}
         </span>
       </div>
-      <pre className="px-3.5 py-3 text-[11px] leading-5 font-mono text-ink-200 whitespace-pre-wrap break-all max-h-[220px] overflow-y-auto scrollbar-thin">
+      <pre className="px-3.5 py-3 text-[11px] leading-5 font-mono text-code-fg whitespace-pre-wrap break-all max-h-[220px] overflow-y-auto scrollbar-thin">
         {preview.sample}
       </pre>
       {preview.notes.length > 0 && (
-        <ul className="px-3.5 py-2.5 border-t border-white/8 text-[11px] text-ink-400 space-y-0.5">
+        <ul className="px-3.5 py-2.5 border-t border-white/10 text-[11px] text-code-muted space-y-0.5">
           {preview.notes.map((n) => (
             <li key={n}>· {n}</li>
           ))}

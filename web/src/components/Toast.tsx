@@ -26,7 +26,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       <div className="fixed bottom-5 right-5 z-[60] flex flex-col gap-2 w-[360px] max-w-[calc(100vw-2.5rem)]">
         {items.map((t) => (
-          <div key={t.id} className="card p-4 flex items-start gap-3 shadow-xl shadow-ink-950/20 animate-[fadeIn_150ms_ease-out]">
+          <div key={t.id} className="card p-4 flex items-start gap-3 shadow-xl shadow-black/20 animate-[fadeIn_150ms_ease-out]">
             {t.tone === 'success' && <CheckCircle2 className="size-5 text-ok-fg shrink-0 mt-0.5" />}
             {t.tone === 'error' && <AlertCircle className="size-5 text-crit-fg shrink-0 mt-0.5" />}
             {t.tone === 'info' && <Info className="size-5 text-accent shrink-0 mt-0.5" />}
