@@ -1,8 +1,15 @@
 import { useQuery } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
-import { DashboardGrid } from '@/components/DashboardGrid';
+import clsx from 'clsx';
+import { useEffect, useMemo, useState } from 'react';
+import { GridCanvas } from '@/components/dashboard/GridCanvas';
+import { TilePalette } from '@/components/dashboard/TilePalette';
+import { useGridInteraction } from '@/components/dashboard/useGridInteraction';
+import { StackedTiles, useIsLgUp } from '@/components/DashboardGrid';
 import { SetupChecklist, type SetupStep } from '@/components/SetupChecklist';
-import { Button, ErrorBox, Loading, PageHeader, Select } from '@/components/ui';
+import { TILE_BY_ID } from '@/components/tiles/registry';
+import type { TileContext } from '@/components/tiles/types';
+import { Button, ErrorBox, Input, Loading, PageHeader, Select } from '@/components/ui';
+import { api } from '@/lib/api';
 import {
   activeDashboardId,
   allDashboards,
@@ -16,10 +23,10 @@ import {
   setDefaultDashboard,
   setupDismissed,
   setSetupDismissed,
-  type LayoutItem,
+  type DashboardLayout,
+  type GridCols,
 } from '@/lib/dashboardStore';
-import { api } from '@/lib/api';
-import type { TileContext } from '@/components/tiles/types';
+import { evictedBy, ROW_STEP, scaleLayout, scaleUnits, slotOrGrow } from '@/lib/gridGeometry';
 
 export function Dashboard() {
   const dash = useQuery({ queryKey: ['dashboard'], queryFn: api.dashboard, refetchInterval: 60_000 });
@@ -29,16 +36,23 @@ export function Dashboard() {
   const activity = useQuery({ queryKey: ['activity', 'all'], queryFn: () => api.activity() });
   const ca = useQuery({ queryKey: ['ca'], queryFn: api.ca });
 
-  const [items, setItems] = useState<LayoutItem[]>(() => loadLayout());
+  const [layout, setLayout] = useState<DashboardLayout>(() => loadLayout());
   const [editing, setEditing] = useState(false);
   const [activeId, setActiveId] = useState(activeDashboardId);
   const [nameDraft, setNameDraft] = useState('');
   const [hiddenSetup, setHiddenSetup] = useState(setupDismissed);
+  const lgUp = useIsLgUp();
 
-  const updateItems = (next: LayoutItem[]) => {
-    setItems(next);
+  useEffect(() => {
+    if (!lgUp && editing) setEditing(false);
+  }, [lgUp, editing]);
+
+  const updateLayout = (next: DashboardLayout) => {
+    setLayout(next);
     persistLayout(next);
   };
+
+  const grid = useGridInteraction({ layout, onChange: updateLayout });
 
   const ctx: TileContext | null = useMemo(() => {
     if (!dash.data) return null;
@@ -93,6 +107,22 @@ export function Dashboard() {
   const isDefault = defaultDashboardId() === activeId;
   const current = dashboards.find((d) => d.id === activeId);
 
+  const blocking = evictedBy(layout.items, layout.rows - ROW_STEP)[0] ?? null;
+
+  const changeCols = (cols: GridCols) => updateLayout(scaleLayout(layout, cols, (id) => TILE_BY_ID[id]?.minW ?? 1));
+  const addRows = () => updateLayout({ ...layout, rows: layout.rows + ROW_STEP });
+  const removeRows = () => {
+    if (blocking || layout.rows - ROW_STEP < ROW_STEP) return;
+    updateLayout({ ...layout, rows: layout.rows - ROW_STEP });
+  };
+  const addTile = (tileId: string) => {
+    const def = TILE_BY_ID[tileId];
+    if (!def || layout.items.some((i) => i.id === tileId)) return;
+    const w = scaleUnits(def.defaultW, layout.cols);
+    const slot = slotOrGrow(layout.items, w, def.defaultH, layout.cols, layout.rows);
+    updateLayout({ ...layout, rows: slot.rows, items: [...layout.items, { id: tileId, x: slot.x, y: slot.y, w, h: def.defaultH }] });
+  };
+
   return (
     <>
       <PageHeader
@@ -112,19 +142,20 @@ export function Dashboard() {
               className="h-9 w-44"
               onChange={(e) => {
                 setActiveId(e.target.value);
-                updateItems(setActiveDashboard(e.target.value));
+                updateLayout(setActiveDashboard(e.target.value));
               }}
             >
               {dashboards.map((d) => (
                 <option key={d.id} value={d.id}>
-                  {d.name}{d.id === defaultDashboardId() ? ' (default)' : ''}
+                  {d.name}
+                  {d.id === defaultDashboardId() ? ' (default)' : ''}
                 </option>
               ))}
             </Select>
-            <Button variant="ghost" size="sm" onClick={() => setEditing((v) => !v)}>
+            <Button variant={editing ? 'primary' : 'ghost'} size="sm" disabled={!lgUp} title={lgUp ? undefined : 'The builder needs a wider window'} onClick={() => setEditing((v) => !v)}>
               {editing ? 'Done' : 'Edit layout'}
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => updateItems(resetLayout())}>
+            <Button variant="ghost" size="sm" onClick={() => updateLayout(resetLayout())}>
               Reset to default
             </Button>
           </>
@@ -146,19 +177,16 @@ export function Dashboard() {
         />
       )}
 
+      {!lgUp && <p className="mb-4 text-[13px] text-text-soft">Tiles are stacked for this window size. Widen the window to use the dashboard builder.</p>}
+
       {editing && (
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          <input
-            value={nameDraft}
-            onChange={(e) => setNameDraft(e.target.value)}
-            placeholder="Name this dashboard"
-            className="h-9 rounded-xl border border-ink-200 bg-surface px-3 text-sm"
-          />
+          <Input value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} placeholder="Name this dashboard" className="h-9 w-56" aria-label="Dashboard name" />
           <Button
             size="sm"
             disabled={!nameDraft.trim()}
             onClick={() => {
-              const saved = saveNamedDashboard(nameDraft, items);
+              const saved = saveNamedDashboard(nameDraft, layout);
               setActiveId(saved.id);
               setNameDraft('');
             }}
@@ -175,16 +203,50 @@ export function Dashboard() {
               onClick={() => {
                 deleteDashboard(current.id);
                 setActiveId('default');
-                updateItems(setActiveDashboard('default'));
+                updateLayout(setActiveDashboard('default'));
               }}
             >
               Delete
             </Button>
           )}
+          <span className="ml-auto text-[12px] text-text-soft">Drag headers to move · pull edges to resize · Esc cancels</span>
         </div>
       )}
 
-      {(!emptyFleet || editing) && <DashboardGrid items={items} ctx={ctx} editing={editing} onChange={updateItems} />}
+      {(!emptyFleet || editing) &&
+        (lgUp ? (
+          <div className={clsx('flex items-start gap-5', grid.interaction.kind !== 'idle' && 'select-none')}>
+            <div className="flex-1 min-w-0">
+              <GridCanvas
+                layout={layout}
+                ctx={ctx}
+                editing={editing}
+                canvasRef={grid.canvasRef}
+                canvasWidth={grid.canvasWidth}
+                cellW={grid.cellW}
+                interaction={grid.interaction}
+                startMove={grid.startMove}
+                startResize={grid.startResize}
+                onChange={updateLayout}
+              />
+            </div>
+            {editing && (
+              <TilePalette
+                className="w-[300px] shrink-0 sticky top-14 max-h-[calc(100vh-4.5rem)]"
+                layout={layout}
+                ctx={ctx}
+                blocking={blocking}
+                onChangeCols={changeCols}
+                onAddRows={addRows}
+                onRemoveRows={removeRows}
+                onAddTile={addTile}
+                startPlace={grid.startPlace}
+              />
+            )}
+          </div>
+        ) : (
+          <StackedTiles layout={layout} ctx={ctx} />
+        ))}
     </>
   );
 }
