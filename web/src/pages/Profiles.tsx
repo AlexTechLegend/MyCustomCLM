@@ -10,8 +10,8 @@ export function Profiles() {
   return (
     <>
       <PageHeader
-        title="Reference profiles"
-        description="A profile is the exact set of files you hand out — learned from your own reference files — plus where they live. Every renewal renders and deploys them."
+        title="Output profiles"
+        description="A profile is the set of formats you want on every renewal — built from the catalogue or learned from your own reference files — plus the deploy location where Vigil copies them."
         actions={<LinkButton to="/profiles/new" variant="primary">New profile</LinkButton>}
       />
       {q.isLoading ? (
@@ -22,8 +22,8 @@ export function Profiles() {
         <Card padded={false}>
           <EmptyState
             icon={<FolderCog className="size-5" />}
-            title="No reference profiles yet"
-            description="Upload a certificate and key in the format you already issue. Vigil will fingerprint the format and reproduce it on every renewal."
+            title="No output profiles yet"
+            description="Use the format builder to pick deliverables (full chain .cer, decrypted .key, .pfx…), or drop a reference file so Vigil matches it exactly."
             action={<LinkButton to="/profiles/new" variant="primary">Create your first profile</LinkButton>}
           />
         </Card>

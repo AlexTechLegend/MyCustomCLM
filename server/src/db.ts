@@ -180,6 +180,7 @@ function migrate(d: Db) {
       tags TEXT NOT NULL DEFAULT '[]',
       notes TEXT NOT NULL DEFAULT '',
       profile_ids TEXT NOT NULL DEFAULT '[]',
+      destination_override TEXT NOT NULL DEFAULT '',
       renewal_count INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
@@ -192,6 +193,15 @@ function migrate(d: Db) {
       description TEXT NOT NULL DEFAULT '',
       destination_path TEXT NOT NULL DEFAULT '',
       outputs TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS tag_groups (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      tags TEXT NOT NULL DEFAULT '[]',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -236,6 +246,15 @@ function migrate(d: Db) {
       value TEXT NOT NULL
     );
   `);
+  // Additive migrations for databases created before these columns existed.
+  ensureColumn(d, 'certificates', 'destination_override', "TEXT NOT NULL DEFAULT ''");
+}
+
+function ensureColumn(d: Db, table: string, column: string, ddl: string) {
+  const cols = d.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (!cols.some((c) => c.name === column)) {
+    d.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+  }
 }
 
 export function nowIso() {

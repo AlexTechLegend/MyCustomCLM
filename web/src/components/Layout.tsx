@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { Activity, FolderCog, LayoutDashboard, Plus, Settings, ShieldCheck } from 'lucide-react';
+import { Activity, FolderCog, LayoutDashboard, Plus, Settings, ShieldCheck, Tags } from 'lucide-react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Logo } from './Logo';
@@ -9,7 +9,8 @@ import { hours } from '@/lib/format';
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/certificates', label: 'Certificates', icon: ShieldCheck },
-  { to: '/profiles', label: 'Reference profiles', icon: FolderCog },
+  { to: '/profiles', label: 'Output profiles', icon: FolderCog },
+  { to: '/tags', label: 'Tags & groups', icon: Tags },
   { to: '/activity', label: 'Activity', icon: Activity },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
@@ -34,7 +35,8 @@ export function Layout() {
               className={({ isActive }) =>
                 clsx(
                   'flex items-center gap-3 rounded-xl px-3 h-10 text-sm font-medium transition-colors',
-                  isActive || (n.to === '/certificates' && location.pathname.startsWith('/certificates'))
+                  isActive ||
+                  (n.to !== '/' && location.pathname.startsWith(n.to))
                     ? 'bg-white/10 text-white'
                     : 'text-ink-400 hover:text-white hover:bg-white/5',
                 )

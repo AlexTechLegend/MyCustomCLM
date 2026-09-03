@@ -10,6 +10,7 @@ import {
   newLog,
   parseCertificate,
   readCaCert,
+  renderDestinationPath,
   renderFilename,
   renderOutput,
   selfSign,
@@ -246,14 +247,16 @@ async function finaliseRenewal(renewalId: string, leafPem: string, chainPems: st
         out.size = buf.length;
         const isKey = spec.format.includes('key') || spec.format === 'pem-bundle' || spec.format === 'pkcs12';
         await fs.writeFile(out.stagedPath, buf, { mode: isKey ? 0o600 : 0o644 });
-        if (renewal.deploy && profile.destinationPath) {
+        const destTemplate = (cert.destinationOverride || profile.destinationPath || '').trim();
+        if (renewal.deploy && destTemplate) {
           try {
-            await fs.mkdir(profile.destinationPath, { recursive: true });
-            const dest = path.join(profile.destinationPath, filename);
+            const destDir = renderDestinationPath(destTemplate, { ...tokens, profile: profile.name });
+            await fs.mkdir(destDir, { recursive: true });
+            const dest = path.join(destDir, filename);
             await fs.writeFile(dest, buf, { mode: isKey ? 0o600 : 0o644 });
             out.deployedTo = dest;
             out.deployStatus = 'deployed';
-            deployedDestinations.add(profile.destinationPath);
+            deployedDestinations.add(destDir);
           } catch (e) {
             out.deployStatus = 'failed';
             out.deployError = e instanceof Error ? e.message : String(e);

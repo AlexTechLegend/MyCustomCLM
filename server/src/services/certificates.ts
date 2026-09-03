@@ -38,6 +38,7 @@ export interface CertRow {
   tags: string;
   notes: string;
   profile_ids: string;
+  destination_override: string;
   renewal_count: number;
   created_at: string;
   updated_at: string;
@@ -80,6 +81,7 @@ export function mapCert(r: CertRow): Certificate {
     tags: parseJson<string[]>(r.tags, []),
     notes: r.notes,
     profileIds: parseJson<string[]>(r.profile_ids, []),
+    destinationOverride: r.destination_override ?? '',
     renewalCount: r.renewal_count,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -92,6 +94,10 @@ export interface ListQuery {
   status?: string;
   source?: string;
   profileId?: string;
+  /** Exact tag match (case-insensitive). */
+  tag?: string;
+  /** Tag-group id — certificate must have at least one tag from the group. */
+  groupId?: string;
   sort?: 'expiry' | 'name' | 'issuer' | 'updated';
   dir?: 'asc' | 'desc';
 }
@@ -108,6 +114,19 @@ export function listCertificates(query: ListQuery = {}): Certificate[] {
   if (query.status && query.status !== 'all') certs = certs.filter((c) => c.status === query.status);
   if (query.source && query.source !== 'all') certs = certs.filter((c) => c.source === query.source);
   if (query.profileId) certs = certs.filter((c) => c.profileIds.includes(query.profileId!));
+  if (query.tag) {
+    const needle = query.tag.toLowerCase();
+    certs = certs.filter((c) => c.tags.some((t) => t.toLowerCase() === needle));
+  }
+  if (query.groupId) {
+    const group = db().prepare('SELECT tags FROM tag_groups WHERE id = ?').get(query.groupId) as { tags: string } | undefined;
+    if (group) {
+      const set = new Set(parseJson<string[]>(group.tags, []).map((t) => t.toLowerCase()));
+      certs = certs.filter((c) => c.tags.some((t) => set.has(t.toLowerCase())));
+    } else {
+      certs = [];
+    }
+  }
   const dir = query.dir === 'desc' ? -1 : 1;
   const sort = query.sort ?? 'expiry';
   certs.sort((a, b) => {
@@ -187,6 +206,7 @@ function rowFromMaterial(id: string, m: Material, extra: Partial<CertRow>): Cert
     tags: extra.tags ?? '[]',
     notes: extra.notes ?? '',
     profile_ids: extra.profile_ids ?? '[]',
+    destination_override: extra.destination_override ?? '',
     renewal_count: extra.renewal_count ?? 0,
     created_at: extra.created_at ?? now,
     updated_at: now,
@@ -194,13 +214,13 @@ function rowFromMaterial(id: string, m: Material, extra: Partial<CertRow>): Cert
 }
 
 const INSERT_SQL = `INSERT INTO certificates (id, name, subject, common_name, issuer, issuer_common_name, serial, not_before, not_after, sans, key_algo, key_bits, sig_algo,
-  fingerprint_sha256, has_key, chain_count, source, tags, notes, profile_ids, renewal_count, created_at, updated_at)
+  fingerprint_sha256, has_key, chain_count, source, tags, notes, profile_ids, destination_override, renewal_count, created_at, updated_at)
   VALUES (@id, @name, @subject, @common_name, @issuer, @issuer_common_name, @serial, @not_before, @not_after, @sans, @key_algo, @key_bits, @sig_algo,
-  @fingerprint_sha256, @has_key, @chain_count, @source, @tags, @notes, @profile_ids, @renewal_count, @created_at, @updated_at)`;
+  @fingerprint_sha256, @has_key, @chain_count, @source, @tags, @notes, @profile_ids, @destination_override, @renewal_count, @created_at, @updated_at)`;
 
 export async function insertCertificate(
   m: Material,
-  opts: { name?: string; tags?: string[]; notes?: string; profileIds?: string[]; source?: CertSource; createdAt?: string },
+  opts: { name?: string; tags?: string[]; notes?: string; profileIds?: string[]; destinationOverride?: string; source?: CertSource; createdAt?: string },
 ): Promise<Certificate> {
   const id = newId('crt');
   await writeVault(id, m);
@@ -209,6 +229,7 @@ export async function insertCertificate(
     tags: JSON.stringify(opts.tags ?? []),
     notes: opts.notes ?? '',
     profile_ids: JSON.stringify(opts.profileIds ?? []),
+    destination_override: opts.destinationOverride ?? '',
     source: opts.source ?? 'imported',
     created_at: opts.createdAt,
   });
@@ -238,20 +259,38 @@ export async function importCertificate(
   return { certificate: cert, commands: log.commands };
 }
 
-export function updateCertificate(id: string, patch: { name?: string; tags?: string[]; notes?: string; profileIds?: string[] }): Certificate | null {
+export function updateCertificate(
+  id: string,
+  patch: { name?: string; tags?: string[]; notes?: string; profileIds?: string[]; destinationOverride?: string },
+): Certificate | null {
   const existing = getCertificate(id);
   if (!existing) return null;
+  const destinationOverride =
+    patch.destinationOverride !== undefined ? validateCertDestination(patch.destinationOverride) : existing.destinationOverride;
   db()
-    .prepare('UPDATE certificates SET name = ?, tags = ?, notes = ?, profile_ids = ?, updated_at = ? WHERE id = ?')
+    .prepare('UPDATE certificates SET name = ?, tags = ?, notes = ?, profile_ids = ?, destination_override = ?, updated_at = ? WHERE id = ?')
     .run(
       patch.name?.trim() || existing.name,
       JSON.stringify(patch.tags ?? existing.tags),
       patch.notes ?? existing.notes,
       JSON.stringify(patch.profileIds ?? existing.profileIds),
+      destinationOverride,
       nowIso(),
       id,
     );
   return getCertificate(id);
+}
+
+/** Absolute / UNC path, or empty. Tokens like {cn} are allowed — validated after substitution at deploy time. */
+export function validateCertDestination(p: string) {
+  const trimmed = p.trim();
+  if (!trimmed) return '';
+  const withTokensBlanked = trimmed.replace(/\{[a-z_]+\}/gi, 'x');
+  const isWinAbs = /^[A-Za-z]:[\\/]/.test(withTokensBlanked) || withTokensBlanked.startsWith('\\\\');
+  if (!path.isAbsolute(withTokensBlanked) && !isWinAbs) {
+    throw new Error('Deploy path must be absolute or a UNC share (for example C:\\Windows\\Temp, D:\\Certs\\{cn_safe}, or \\\\fileserver\\certs\\{cn_safe}).');
+  }
+  return trimmed;
 }
 
 export async function replaceCertificateMaterial(id: string, m: Material, source: CertSource): Promise<Certificate | null> {

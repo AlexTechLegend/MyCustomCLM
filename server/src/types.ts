@@ -22,6 +22,8 @@ export interface Certificate {
   tags: string[];
   notes: string;
   profileIds: string[];
+  /** Optional per-certificate deploy directory. Overrides the profile destination when set. */
+  destinationOverride: string;
   renewalCount: number;
   createdAt: string;
   updatedAt: string;
@@ -82,8 +84,20 @@ export interface Profile {
   id: string;
   name: string;
   description: string;
+  /** Absolute / UNC directory. Tokens {cn} {cn_safe} {profile} {year} {date} allowed. */
   destinationPath: string;
   outputs: OutputSpec[];
+  createdAt: string;
+  updatedAt: string;
+  certificateCount?: number;
+}
+
+/** A named collection of tags used for bulk filtering. */
+export interface TagGroup {
+  id: string;
+  name: string;
+  description: string;
+  tags: string[];
   createdAt: string;
   updatedAt: string;
   certificateCount?: number;

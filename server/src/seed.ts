@@ -13,6 +13,7 @@ import { insertCertificate } from './services/certificates.js';
 import { recordEvent } from './services/events.js';
 import { createProfile } from './services/profiles.js';
 import { saveSettings } from './services/settings.js';
+import { createTagGroup } from './services/tags.js';
 import type { CertSource, EventType } from './types.js';
 
 const DAY = 86400000;
@@ -108,14 +109,18 @@ async function main() {
 
   saveSettings({ organisation: 'Contoso Ltd' });
 
+  createTagGroup({ name: 'Production web', description: 'Public-facing web and API certificates.', tags: ['web', 'prod', 'api', 'iis'] });
+  createTagGroup({ name: 'Internal infrastructure', description: 'Anything on the corporate network.', tags: ['internal', 'ci', 'database', 'monitoring'] });
+  createTagGroup({ name: 'Identity', description: 'SSO, LDAP and VPN.', tags: ['identity', 'network'] });
+
   const destRoot = path.join(os.tmpdir(), 'vigil-demo');
   const profiles = {
     iis: createProfile({
       name: 'IIS – Web Farm',
-      description: 'Full-chain .cer (CRLF) for the bindings, decrypted private.key for the automation share, and a PFX for direct import.',
-      destinationPath: path.join(destRoot, 'webfarm'),
+      description: 'Full-chain .cer (CRLF, leaf + intermediate + root) for the bindings, decrypted private.key for the automation share, and a PFX for direct import.',
+      destinationPath: path.join(destRoot, 'webfarm', '{cn_safe}'),
       outputs: [
-        { label: 'Full chain certificate (.cer, CRLF)', filename: 'fullchain.cer', format: 'pem-fullchain', lineEnding: 'crlf', includeRoot: false },
+        { label: 'Full chain certificate (.cer, CRLF)', filename: 'fullchain.cer', format: 'pem-fullchain', lineEnding: 'crlf', includeRoot: true },
         { label: 'Decrypted private key (PKCS#8)', filename: 'private.key', format: 'pem-key', lineEnding: 'lf', keyEncoding: 'pkcs8' },
         { label: 'PKCS#12 for IIS import', filename: '{cn_safe}.pfx', format: 'pkcs12', password: 'ChangeMe-2024', friendlyName: '{cn}' },
       ],

@@ -1,4 +1,4 @@
-import type { AutomationEvent, Certificate, DetectedFormat, OutputSpec, Profile, Renewal, Settings } from '@/types';
+import type { AutomationEvent, Certificate, DetectedFormat, OutputSpec, Profile, Renewal, Settings, TagGroup } from '@/types';
 
 export class ApiError extends Error {
   constructor(message: string, public status: number, public command?: string, public stderr?: string) {
@@ -87,7 +87,8 @@ export const api = {
   certificate: (id: string) => request<CertificateDetail>(`/api/certificates/${id}`),
   certificateText: (id: string) => request<string>(`/api/certificates/${id}/text`),
   importCertificate: (form: FormData) => request<{ certificate: Certificate; commands: string[] }>('/api/certificates/import', { method: 'POST', body: form }),
-  updateCertificate: (id: string, patch: Partial<Pick<Certificate, 'name' | 'tags' | 'notes' | 'profileIds'>>) => request<Certificate>(`/api/certificates/${id}`, json('PATCH', patch)),
+  updateCertificate: (id: string, patch: Partial<Pick<Certificate, 'name' | 'tags' | 'notes' | 'profileIds' | 'destinationOverride'>>) =>
+    request<Certificate>(`/api/certificates/${id}`, json('PATCH', patch)),
   deleteCertificate: (id: string) => request<void>(`/api/certificates/${id}`, { method: 'DELETE' }),
   downloadUrl: (id: string, params: Record<string, string | undefined>) => {
     const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v) as [string, string][]);
@@ -105,6 +106,12 @@ export const api = {
   createProfile: (p: Partial<Profile>) => request<Profile>('/api/profiles', json('POST', p)),
   updateProfile: (id: string, p: Partial<Profile>) => request<Profile>(`/api/profiles/${id}`, json('PUT', p)),
   deleteProfile: (id: string) => request<void>(`/api/profiles/${id}`, { method: 'DELETE' }),
+
+  tags: () => request<{ tags: { tag: string; count: number }[]; groups: TagGroup[] }>('/api/tags'),
+  tagGroups: () => request<TagGroup[]>('/api/tag-groups'),
+  createTagGroup: (g: Partial<TagGroup>) => request<TagGroup>('/api/tag-groups', json('POST', g)),
+  updateTagGroup: (id: string, g: Partial<TagGroup>) => request<TagGroup>(`/api/tag-groups/${id}`, json('PUT', g)),
+  deleteTagGroup: (id: string) => request<void>(`/api/tag-groups/${id}`, { method: 'DELETE' }),
 
   activity: (type?: string) => request<{ events: AutomationEvent[]; summary: TimeSavedSummary }>(`/api/activity${type ? `?type=${type}` : ''}`),
 

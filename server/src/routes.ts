@@ -33,6 +33,7 @@ import { listEvents, recordEvent, timeSavedSummary } from './services/events.js'
 import { createProfile, deleteProfile, getProfile, listProfiles, updateProfile } from './services/profiles.js';
 import { completeCsrRenewal, getRenewal, listRenewals, renewalOutputFile, renewalZipEntries, startRenewal } from './services/renewals.js';
 import { getSettings, saveSettings } from './services/settings.js';
+import { createTagGroup, deleteTagGroup, getTagGroup, listDistinctTags, listTagGroups, updateTagGroup } from './services/tags.js';
 import type { KeyMode, OutputFormat, RenewalMethod } from './types.js';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024, files: 12 } });
@@ -90,6 +91,8 @@ api.get(
         status: str(req.query.status),
         source: str(req.query.source),
         profileId: str(req.query.profileId),
+        tag: str(req.query.tag),
+        groupId: str(req.query.groupId),
         sort: str(req.query.sort) as never,
         dir: str(req.query.dir) as never,
       }),
@@ -156,6 +159,7 @@ api.patch(
       tags: req.body.tags !== undefined ? list(req.body.tags) : undefined,
       notes: str(req.body.notes),
       profileIds: req.body.profileIds !== undefined ? list(req.body.profileIds) : undefined,
+      destinationOverride: req.body.destinationOverride !== undefined ? str(req.body.destinationOverride) ?? '' : undefined,
     });
     if (!cert) return res.status(404).json({ error: 'Certificate not found' });
     res.json(cert);
@@ -316,6 +320,29 @@ api.put(
 );
 
 api.delete('/profiles/:id', wrap((req, res) => res.status(deleteProfile(req.params.id as string) ? 204 : 404).end()));
+
+// Tags & groups ------------------------------------------------------------
+
+api.get('/tags', wrap((_req, res) => res.json({ tags: listDistinctTags(), groups: listTagGroups() })));
+api.get('/tag-groups', wrap((_req, res) => res.json(listTagGroups())));
+api.post('/tag-groups', wrap((req, res) => res.status(201).json(createTagGroup(req.body))));
+api.get(
+  '/tag-groups/:id',
+  wrap((req, res) => {
+    const g = getTagGroup(req.params.id as string);
+    if (!g) return res.status(404).json({ error: 'Tag group not found' });
+    res.json({ group: g, certificates: listCertificates({ groupId: g.id }) });
+  }),
+);
+api.put(
+  '/tag-groups/:id',
+  wrap((req, res) => {
+    const g = updateTagGroup(req.params.id as string, req.body);
+    if (!g) return res.status(404).json({ error: 'Tag group not found' });
+    res.json(g);
+  }),
+);
+api.delete('/tag-groups/:id', wrap((req, res) => res.status(deleteTagGroup(req.params.id as string) ? 204 : 404).end()));
 
 // Activity -----------------------------------------------------------------
 

@@ -1,31 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronRight, FileSearch, GripVertical, Plus, Sparkles, Trash2 } from 'lucide-react';
+import { ChevronRight, FileSearch, FolderOutput, GripVertical, Plus, Sparkles, Trash2, Wrench } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { FileDrop } from '@/components/FileDrop';
 import { useToast } from '@/components/Toast';
-import { Badge, Button, Card, CardHeader, Checkbox, ErrorBox, Field, Input, LinkButton, Loading, Modal, PageHeader, Select, StatusBadge, Textarea } from '@/components/ui';
+import { Badge, Button, Card, CardHeader, Checkbox, ErrorBox, Field, Input, LinkButton, Loading, Modal, PageHeader, Select, StatusBadge, Tabs, Textarea } from '@/components/ui';
 import { api } from '@/lib/api';
 import { FORMAT_LABELS, formatIsPem, formatNeedsKey } from '@/lib/format';
+import { FORMAT_CATEGORIES, FORMAT_PRESETS, needsPassword, specFromPreset } from '@/lib/formatPresets';
 import type { DetectedFormat, OutputFormat, OutputSpec, Profile } from '@/types';
 
 const TOKENS = ['{cn}', '{cn_safe}', '{date}', '{year}', '{serial}', '{profile}'];
 
-function blankSpec(): OutputSpec {
-  return {
-    id: `new_${Math.random().toString(36).slice(2, 8)}`,
-    label: 'PEM full chain',
-    filename: 'fullchain.pem',
-    format: 'pem-fullchain',
-    lineEnding: 'lf',
-    includeRoot: false,
-    keyEncoding: 'pkcs8',
-    password: '',
-    friendlyName: '{cn}',
-    legacyPkcs12: false,
-    trailingNewline: true,
-    detected: null,
-  };
+function newId(prefix: string) {
+  return `${prefix}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 export function ProfileEditor() {
@@ -36,9 +24,15 @@ export function ProfileEditor() {
   const toast = useToast();
   const existing = useQuery({ queryKey: ['profile', id], queryFn: () => api.profile(id!), enabled: !isNew });
 
-  const [form, setForm] = useState<Pick<Profile, 'name' | 'description' | 'destinationPath' | 'outputs'>>({ name: '', description: '', destinationPath: '', outputs: [] });
+  const [form, setForm] = useState<Pick<Profile, 'name' | 'description' | 'destinationPath' | 'outputs'>>({
+    name: '',
+    description: '',
+    destinationPath: '',
+    outputs: [],
+  });
   const [loaded, setLoaded] = useState(false);
-  const [analyzeOpen, setAnalyzeOpen] = useState(false);
+  const [builderOpen, setBuilderOpen] = useState(false);
+  const [inspectOpen, setInspectOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
@@ -81,6 +75,7 @@ export function ProfileEditor() {
       [next[index], next[j]] = [next[j], next[index]];
       return { ...f, outputs: next };
     });
+  const addSpec = (spec: OutputSpec) => setForm((f) => ({ ...f, outputs: [...f.outputs, spec] }));
 
   if (!isNew && existing.isLoading) return <Loading />;
   if (!isNew && existing.error) return <ErrorBox error={existing.error} />;
@@ -89,16 +84,22 @@ export function ProfileEditor() {
     <>
       <div className="mb-2">
         <Link to="/profiles" className="text-[13px] text-ink-500 hover:text-ink-800 inline-flex items-center gap-1">
-          <ChevronRight className="size-3.5 rotate-180" /> Reference profiles
+          <ChevronRight className="size-3.5 rotate-180" /> Output profiles
         </Link>
       </div>
       <PageHeader
-        title={isNew ? 'New reference profile' : form.name || 'Profile'}
-        description="Describe the deliverables once. Vigil renders them identically on every renewal."
+        title={isNew ? 'New output profile' : form.name || 'Profile'}
+        description="Choose the formats you want delivered on every renewal — build them from the catalogue, or learn them from your own reference files. Set a deploy location and Vigil will copy the files there."
         actions={
           <>
-            {!isNew && <Button variant="danger" icon={<Trash2 className="size-4" />} onClick={() => setConfirmDelete(true)}>Delete</Button>}
-            <Button variant="primary" loading={save.isPending} disabled={!form.name.trim()} onClick={() => save.mutate()}>{isNew ? 'Create profile' : 'Save changes'}</Button>
+            {!isNew && (
+              <Button variant="danger" icon={<Trash2 className="size-4" />} onClick={() => setConfirmDelete(true)}>
+                Delete
+              </Button>
+            )}
+            <Button variant="primary" loading={save.isPending} disabled={!form.name.trim()} onClick={() => save.mutate()}>
+              {isNew ? 'Create profile' : 'Save changes'}
+            </Button>
           </>
         }
       />
@@ -108,31 +109,65 @@ export function ProfileEditor() {
           <Card>
             <CardHeader title="Profile" />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Field label="Name" required><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="IIS – Web Farm" /></Field>
-              <Field label="Destination path" hint="Absolute directory. Files are written here on renewal when deployment is enabled. Leave empty for download only.">
-                <Input value={form.destinationPath} onChange={(e) => setForm({ ...form, destinationPath: e.target.value })} placeholder="/etc/ssl/webfarm  or  D:\Certs\WebFarm" className="font-mono text-[13px]" />
+              <Field label="Name" required>
+                <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Windows Web Servers" />
+              </Field>
+              <Field
+                label="Deploy location"
+                hint="Absolute or UNC path. Files are written here on renewal when deployment is on. Tokens allowed: {cn_safe} {profile} {date}."
+              >
+                <Input
+                  value={form.destinationPath}
+                  onChange={(e) => setForm({ ...form, destinationPath: e.target.value })}
+                  placeholder="C:\Windows\Temp  or  \\fileserver\certs\{cn_safe}  or  /etc/ssl/webfarm"
+                  className="font-mono text-[13px]"
+                />
               </Field>
             </div>
-            <Field label="Description" className="mt-4"><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="What consumes these files and any handling notes." className="min-h-16" /></Field>
+            <Field label="Description" className="mt-4">
+              <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="What consumes these files and any handling notes." className="min-h-16" />
+            </Field>
+            {form.destinationPath && (
+              <div className="mt-4 flex items-start gap-2 rounded-xl bg-brand-50 border border-brand-100 px-3.5 py-3 text-[13px] text-brand-800">
+                <FolderOutput className="size-4 mt-0.5 shrink-0" />
+                <span>
+                  On renew, each output below is rendered and copied to <span className="font-mono">{form.destinationPath}</span>
+                  {form.destinationPath.includes('{') ? ' (tokens expanded per certificate).' : '.'}
+                </span>
+              </div>
+            )}
           </Card>
 
           <Card>
             <CardHeader
               title="Output files"
-              description="Rendered in this order. Filenames accept tokens."
+              description="These are the specialised forms produced on every renewal — PFX, full chain, decrypted key, and anything else you need."
               action={
                 <div className="flex items-center gap-2">
-                  <Button size="sm" variant="ghost" icon={<Plus className="size-3.5" />} onClick={() => setForm({ ...form, outputs: [...form.outputs, blankSpec()] })}>Add manually</Button>
-                  <Button size="sm" variant="primary" icon={<FileSearch className="size-3.5" />} onClick={() => setAnalyzeOpen(true)}>Add from reference file</Button>
+                  <Button size="sm" variant="ghost" icon={<FileSearch className="size-3.5" />} onClick={() => setInspectOpen(true)}>
+                    From reference file
+                  </Button>
+                  <Button size="sm" variant="primary" icon={<Wrench className="size-3.5" />} onClick={() => setBuilderOpen(true)}>
+                    Build from catalogue
+                  </Button>
                 </div>
               }
             />
             {form.outputs.length === 0 ? (
               <div className="rounded-xl border border-dashed border-ink-300 p-8 text-center">
-                <Sparkles className="size-5 text-brand-600 mx-auto mb-2" />
-                <div className="text-sm font-medium text-ink-900">Start from a reference file</div>
-                <p className="text-[13px] text-ink-500 mt-1 max-w-md mx-auto">Upload a certificate or key exactly as you issue it today — for example a full-chain <span className="font-mono">.cer</span> and a decrypted <span className="font-mono">private.key</span>. Vigil detects the container, chain depth, key encoding and line endings.</p>
-                <Button className="mt-4" variant="primary" onClick={() => setAnalyzeOpen(true)}>Analyse a reference file</Button>
+                <Wrench className="size-5 text-brand-600 mx-auto mb-2" />
+                <div className="text-sm font-medium text-ink-900">Build the deliverables for this profile</div>
+                <p className="text-[13px] text-ink-500 mt-1 max-w-md mx-auto">
+                  Pick formats from the catalogue (full chain .cer, decrypted .key, .pfx…), or drop a reference file you already issue so Vigil can match it exactly.
+                </p>
+                <div className="mt-4 flex items-center justify-center gap-2">
+                  <Button variant="primary" icon={<Wrench className="size-3.5" />} onClick={() => setBuilderOpen(true)}>
+                    Open format builder
+                  </Button>
+                  <Button variant="secondary" icon={<FileSearch className="size-3.5" />} onClick={() => setInspectOpen(true)}>
+                    Inspect a reference file
+                  </Button>
+                </div>
               </div>
             ) : (
               <ul className="space-y-3">
@@ -144,9 +179,11 @@ export function ProfileEditor() {
               </ul>
             )}
             <div className="mt-4 flex flex-wrap items-center gap-1.5 text-[12px] text-ink-500">
-              <span>Tokens:</span>
+              <span>Filename tokens:</span>
               {TOKENS.map((t) => (
-                <code key={t} className="font-mono bg-ink-100 rounded px-1.5 py-0.5 text-ink-700">{t}</code>
+                <code key={t} className="font-mono bg-ink-100 rounded px-1.5 py-0.5 text-ink-700">
+                  {t}
+                </code>
               ))}
             </div>
           </Card>
@@ -162,7 +199,9 @@ export function ProfileEditor() {
                 <ul className="space-y-2">
                   {existing.data.certificates.slice(0, 10).map((c) => (
                     <li key={c.id} className="flex items-center justify-between gap-3">
-                      <Link to={`/certificates/${c.id}`} className="text-sm text-ink-900 hover:text-brand-700 truncate">{c.name}</Link>
+                      <Link to={`/certificates/${c.id}`} className="text-sm text-ink-900 hover:text-brand-700 truncate">
+                        {c.name}
+                      </Link>
                       <StatusBadge status={c.status} />
                     </li>
                   ))}
@@ -171,24 +210,33 @@ export function ProfileEditor() {
             </Card>
           )}
           <Card className="bg-ink-50/60">
-            <h3 className="text-[13px] font-semibold text-ink-800 mb-2">How rendering works</h3>
-            <ul className="text-[13px] text-ink-600 space-y-1.5 list-disc pl-4">
-              <li>Each output is produced from the vault copy with OpenSSL — never by string-editing your files.</li>
-              <li>Chain outputs include intermediates; the root is appended only when the reference had one.</li>
-              <li>Keys are re-encoded to the detected encoding (PKCS#8 / PKCS#1) and encrypted only if the reference was.</li>
-              <li>Line endings and trailing newline are reproduced for PEM outputs.</li>
-              <li>Files are staged for download and, if a destination is set, written there with keys at 0600.</li>
-            </ul>
+            <h3 className="text-[13px] font-semibold text-ink-800 mb-2">How renewals use this profile</h3>
+            <ol className="text-[13px] text-ink-600 space-y-1.5 list-decimal pl-4">
+              <li>Link the profile to a certificate (or select it at renew time).</li>
+              <li>On renew, Vigil issues the new certificate, then renders every output below with OpenSSL.</li>
+              <li>You get a ZIP plus individual downloads of the main and specialised forms.</li>
+              <li>If a deploy location is set (here or on the certificate), the same files are copied there — including UNC network shares the server can write to.</li>
+            </ol>
           </Card>
         </div>
       </div>
 
-      {analyzeOpen && (
-        <AnalyzeModal
-          onClose={() => setAnalyzeOpen(false)}
+      {builderOpen && (
+        <BuilderModal
+          onClose={() => setBuilderOpen(false)}
+          onAdd={(specs) => {
+            specs.forEach(addSpec);
+            setBuilderOpen(false);
+            toast.success(`Added ${specs.length} output${specs.length === 1 ? '' : 's'}`);
+          }}
+        />
+      )}
+      {inspectOpen && (
+        <InspectModal
+          onClose={() => setInspectOpen(false)}
           onAdd={(spec) => {
-            setForm((f) => ({ ...f, outputs: [...f.outputs, spec] }));
-            setAnalyzeOpen(false);
+            addSpec(spec);
+            setInspectOpen(false);
           }}
         />
       )}
@@ -197,7 +245,16 @@ export function ProfileEditor() {
         onClose={() => setConfirmDelete(false)}
         title="Delete this profile?"
         description="Certificates linked to it will simply lose the link."
-        footer={<><Button variant="ghost" onClick={() => setConfirmDelete(false)}>Cancel</Button><Button variant="danger" loading={remove.isPending} onClick={() => remove.mutate()}>Delete</Button></>}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setConfirmDelete(false)}>
+              Cancel
+            </Button>
+            <Button variant="danger" loading={remove.isPending} onClick={() => remove.mutate()}>
+              Delete
+            </Button>
+          </>
+        }
       >
         <p className="text-sm text-ink-600">Previously rendered files are not affected.</p>
       </Modal>
@@ -205,27 +262,51 @@ export function ProfileEditor() {
   );
 }
 
-function SpecEditor({ spec, index, total, onChange, onRemove, onMove }: { spec: OutputSpec; index: number; total: number; onChange: (p: Partial<OutputSpec>) => void; onRemove: () => void; onMove: (d: -1 | 1) => void }) {
+function SpecEditor({
+  spec,
+  index,
+  total,
+  onChange,
+  onRemove,
+  onMove,
+}: {
+  spec: OutputSpec;
+  index: number;
+  total: number;
+  onChange: (p: Partial<OutputSpec>) => void;
+  onRemove: () => void;
+  onMove: (d: -1 | 1) => void;
+}) {
   const isPem = formatIsPem(spec.format);
   const needsKey = formatNeedsKey(spec.format);
-  const needsPassword = spec.format === 'pkcs12' || spec.format === 'pem-key-encrypted';
+  const pwd = needsPassword(spec.format);
   const chainish = ['pem-fullchain', 'pem-chain', 'pem-bundle', 'pkcs7-pem', 'pkcs7-der', 'pkcs12'].includes(spec.format);
   const keyish = ['pem-key', 'pem-key-encrypted', 'pem-bundle'].includes(spec.format);
   return (
     <div className="rounded-xl border border-ink-200 p-4">
       <div className="flex items-start gap-3">
         <div className="flex flex-col items-center gap-0.5 text-ink-300 pt-1">
-          <button type="button" className="hover:text-ink-600 disabled:opacity-30" disabled={index === 0} onClick={() => onMove(-1)} aria-label="Move up">▲</button>
+          <button type="button" className="hover:text-ink-600 disabled:opacity-30" disabled={index === 0} onClick={() => onMove(-1)} aria-label="Move up">
+            ▲
+          </button>
           <GripVertical className="size-4" />
-          <button type="button" className="hover:text-ink-600 disabled:opacity-30" disabled={index === total - 1} onClick={() => onMove(1)} aria-label="Move down">▼</button>
+          <button type="button" className="hover:text-ink-600 disabled:opacity-30" disabled={index === total - 1} onClick={() => onMove(1)} aria-label="Move down">
+            ▼
+          </button>
         </div>
         <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-3">
-          <Field label="Label"><Input value={spec.label} onChange={(e) => onChange({ label: e.target.value })} /></Field>
-          <Field label="Filename pattern"><Input value={spec.filename} onChange={(e) => onChange({ filename: e.target.value })} className="font-mono text-[13px]" /></Field>
+          <Field label="Label">
+            <Input value={spec.label} onChange={(e) => onChange({ label: e.target.value })} />
+          </Field>
+          <Field label="Filename pattern">
+            <Input value={spec.filename} onChange={(e) => onChange({ filename: e.target.value })} className="font-mono text-[13px]" />
+          </Field>
           <Field label="Format" className="md:col-span-2">
             <Select value={spec.format} onChange={(e) => onChange({ format: e.target.value as OutputFormat })}>
               {(Object.keys(FORMAT_LABELS) as OutputFormat[]).map((f) => (
-                <option key={f} value={f}>{FORMAT_LABELS[f]}</option>
+                <option key={f} value={f}>
+                  {FORMAT_LABELS[f]}
+                </option>
               ))}
             </Select>
           </Field>
@@ -245,7 +326,7 @@ function SpecEditor({ spec, index, total, onChange, onRemove, onMove }: { spec: 
               </Select>
             </Field>
           )}
-          {needsPassword && (
+          {pwd && (
             <Field label={spec.format === 'pkcs12' ? 'PFX password' : 'Key password'} hint="Stored with the profile so renewals are unattended." required>
               <Input type="password" value={spec.password} onChange={(e) => onChange({ password: e.target.value })} autoComplete="new-password" />
             </Field>
@@ -256,23 +337,25 @@ function SpecEditor({ spec, index, total, onChange, onRemove, onMove }: { spec: 
             </Field>
           )}
           <div className="md:col-span-2 flex flex-wrap gap-x-8 gap-y-3 pt-1">
-            {chainish && <Checkbox checked={spec.includeRoot} onChange={(v) => onChange({ includeRoot: v })} label="Include root CA" />}
+            {chainish && <Checkbox checked={spec.includeRoot} onChange={(v) => onChange({ includeRoot: v })} label="Include root CA (leaf + intermediate + root)" />}
             {isPem && <Checkbox checked={spec.trailingNewline} onChange={(v) => onChange({ trailingNewline: v })} label="Trailing newline" />}
-            {spec.format === 'pkcs12' && <Checkbox checked={spec.legacyPkcs12} onChange={(v) => onChange({ legacyPkcs12: v })} label="Legacy algorithms (RC2/3DES)" description="For very old Windows / Java consumers." />}
+            {spec.format === 'pkcs12' && <Checkbox checked={spec.legacyPkcs12} onChange={(v) => onChange({ legacyPkcs12: v })} label="Legacy algorithms (RC2/3DES)" />}
           </div>
           <div className="md:col-span-2 flex items-center justify-between gap-3 pt-1">
             <div className="flex items-center gap-2 text-[12px] text-ink-500">
               {spec.detected ? (
                 <>
-                  <Badge tone="brand">Learned from {spec.detected.sourceFilename}</Badge>
+                  <Badge tone="brand">From {spec.detected.sourceFilename}</Badge>
                   <span className="truncate">{spec.detected.summary}</span>
                 </>
               ) : (
-                <Badge>Manual</Badge>
+                <Badge>Catalogue</Badge>
               )}
               {needsKey && <span className="text-ink-400">· requires private key</span>}
             </div>
-            <Button size="sm" variant="ghost" icon={<Trash2 className="size-3.5" />} onClick={onRemove}>Remove</Button>
+            <Button size="sm" variant="ghost" icon={<Trash2 className="size-3.5" />} onClick={onRemove}>
+              Remove
+            </Button>
           </div>
         </div>
       </div>
@@ -280,7 +363,79 @@ function SpecEditor({ spec, index, total, onChange, onRemove, onMove }: { spec: 
   );
 }
 
-function AnalyzeModal({ onClose, onAdd }: { onClose: () => void; onAdd: (s: OutputSpec) => void }) {
+type FormatPresetCategory = (typeof FORMAT_CATEGORIES)[number]['id'];
+
+function BuilderModal({ onClose, onAdd }: { onClose: () => void; onAdd: (specs: OutputSpec[]) => void }) {
+  const [selected, setSelected] = useState<string[]>([]);
+  const [category, setCategory] = useState<'all' | FormatPresetCategory>('all');
+  const presets = FORMAT_PRESETS.filter((p) => category === 'all' || p.category === category);
+  const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Format builder"
+      description="Select every form you want this profile to produce. You can fine-tune filenames, passwords and line endings after adding."
+      width="max-w-3xl"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            disabled={!selected.length}
+            icon={<Plus className="size-4" />}
+            onClick={() =>
+              onAdd(
+                FORMAT_PRESETS.filter((p) => selected.includes(p.id)).map((p) => {
+                  const spec = specFromPreset(p, newId('out'));
+                  return spec;
+                }),
+              )
+            }
+          >
+            Add {selected.length || ''} selected
+          </Button>
+        </>
+      }
+    >
+      <Tabs
+        tabs={[{ id: 'all' as const, label: 'All' }, ...FORMAT_CATEGORIES.map((c) => ({ id: c.id as 'all' | FormatPresetCategory, label: c.label }))]}
+        value={category}
+        onChange={setCategory}
+      />
+      <ul className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[420px] overflow-y-auto pr-1">
+        {presets.map((p) => {
+          const on = selected.includes(p.id);
+          return (
+            <li key={p.id}>
+              <button
+                type="button"
+                onClick={() => toggle(p.id)}
+                className={`w-full text-left rounded-xl border p-3.5 transition-colors ${on ? 'border-brand-500 bg-brand-50/60 ring-1 ring-brand-500' : 'border-ink-200 hover:border-ink-300 bg-surface'}`}
+              >
+                <div className="flex items-start gap-3">
+                  <span className={`mt-0.5 size-4 rounded border flex items-center justify-center shrink-0 ${on ? 'bg-brand-600 border-brand-600 text-white' : 'border-ink-300'}`}>
+                    {on && <span className="text-[10px] leading-none">✓</span>}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-ink-950">{p.title}</div>
+                    <div className="text-[12px] text-ink-500 mt-0.5 leading-5">{p.description}</div>
+                    <div className="mt-1.5 font-mono text-[11px] text-ink-400">{p.defaults.filename}</div>
+                  </div>
+                </div>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </Modal>
+  );
+}
+
+function InspectModal({ onClose, onAdd }: { onClose: () => void; onAdd: (s: OutputSpec) => void }) {
   const [files, setFiles] = useState<File[]>([]);
   const [password, setPassword] = useState('');
   const [result, setResult] = useState<{ detected: DetectedFormat; spec: OutputSpec } | null>(null);
@@ -299,16 +454,22 @@ function AnalyzeModal({ onClose, onAdd }: { onClose: () => void; onAdd: (s: Outp
     <Modal
       open
       onClose={onClose}
-      title="Add output from a reference file"
-      description="Upload one file in exactly the form you issue today. Its format becomes the template."
+      title="Inspect a reference file"
+      description="Drop a certificate or key in the exact form you issue today. Vigil shows how it is built, then turns it into an output for this profile."
       width="max-w-2xl"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
           {!result ? (
-            <Button variant="primary" loading={analyze.isPending} disabled={!files.length} onClick={() => analyze.mutate()}>Analyse with OpenSSL</Button>
+            <Button variant="primary" loading={analyze.isPending} disabled={!files.length} onClick={() => analyze.mutate()}>
+              Analyse with OpenSSL
+            </Button>
           ) : (
-            <Button variant="primary" onClick={() => onAdd(result.spec)}>Add this output</Button>
+            <Button variant="primary" onClick={() => onAdd(result.spec)}>
+              Add this output
+            </Button>
           )}
         </>
       }
@@ -337,17 +498,21 @@ function AnalyzeModal({ onClose, onAdd }: { onClose: () => void; onAdd: (s: Outp
             </ul>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Field label="Label"><Input value={result.spec.label} onChange={(e) => setResult({ ...result, spec: { ...result.spec, label: e.target.value } })} /></Field>
-            <Field label="Filename pattern" hint="Tokens: {cn} {cn_safe} {date} {year} {serial} {profile}">
+            <Field label="Label">
+              <Input value={result.spec.label} onChange={(e) => setResult({ ...result, spec: { ...result.spec, label: e.target.value } })} />
+            </Field>
+            <Field label="Filename pattern">
               <Input value={result.spec.filename} onChange={(e) => setResult({ ...result, spec: { ...result.spec, filename: e.target.value } })} className="font-mono text-[13px]" />
             </Field>
-            {(result.spec.format === 'pkcs12' || result.spec.format === 'pem-key-encrypted') && (
-              <Field label="Password for rendered files" required hint="You can change it later in the profile.">
+            {needsPassword(result.spec.format) && (
+              <Field label="Password for rendered files" required>
                 <Input type="password" value={result.spec.password} onChange={(e) => setResult({ ...result, spec: { ...result.spec, password: e.target.value } })} autoComplete="new-password" />
               </Field>
             )}
           </div>
-          <button type="button" className="text-[13px] text-brand-700 font-medium hover:underline" onClick={() => { setResult(null); setFiles([]); }}>Analyse a different file</button>
+          <button type="button" className="text-[13px] text-brand-700 font-medium hover:underline" onClick={() => { setResult(null); setFiles([]); }}>
+            Analyse a different file
+          </button>
         </div>
       )}
     </Modal>

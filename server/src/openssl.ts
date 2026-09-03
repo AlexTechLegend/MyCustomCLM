@@ -610,17 +610,54 @@ export interface RenderTokens {
   date: Date;
 }
 
-export function renderFilename(pattern: string, t: RenderTokens): string {
+function tokenValues(t: RenderTokens) {
   const iso = t.date.toISOString();
-  const cnSafe = t.cn.replace(/^\*\./, 'wildcard.').replace(/[^A-Za-z0-9._-]+/g, '_');
+  return {
+    cn: t.cn.replace(/^\*\./, 'wildcard.'),
+    cn_safe: t.cn.replace(/^\*\./, 'wildcard.').replace(/[^A-Za-z0-9._-]+/g, '_'),
+    date: iso.slice(0, 10),
+    year: iso.slice(0, 4),
+    serial: t.serial.slice(0, 16),
+    profile: t.profile.replace(/[^A-Za-z0-9._-]+/g, '_'),
+  };
+}
+
+export function renderFilename(pattern: string, t: RenderTokens): string {
+  const v = tokenValues(t);
   const out = pattern
-    .replace(/\{cn\}/g, t.cn.replace(/^\*\./, 'wildcard.'))
-    .replace(/\{cn_safe\}/g, cnSafe)
-    .replace(/\{date\}/g, iso.slice(0, 10))
-    .replace(/\{year\}/g, iso.slice(0, 4))
-    .replace(/\{serial\}/g, t.serial.slice(0, 16))
-    .replace(/\{profile\}/g, t.profile.replace(/[^A-Za-z0-9._-]+/g, '_'));
+    .replace(/\{cn\}/g, v.cn)
+    .replace(/\{cn_safe\}/g, v.cn_safe)
+    .replace(/\{date\}/g, v.date)
+    .replace(/\{year\}/g, v.year)
+    .replace(/\{serial\}/g, v.serial)
+    .replace(/\{profile\}/g, v.profile);
   return sanitiseFilename(out);
+}
+
+/**
+ * Expand tokens in a destination directory. Path separators are preserved; each path
+ * segment is sanitised so tokens cannot introduce `..` or drive letters mid-path.
+ */
+export function renderDestinationPath(pattern: string, t: RenderTokens): string {
+  const v = tokenValues(t);
+  const expanded = pattern
+    .replace(/\{cn\}/g, v.cn)
+    .replace(/\{cn_safe\}/g, v.cn_safe)
+    .replace(/\{date\}/g, v.date)
+    .replace(/\{year\}/g, v.year)
+    .replace(/\{serial\}/g, v.serial)
+    .replace(/\{profile\}/g, v.profile);
+  const unc = expanded.startsWith('\\\\');
+  const parts = expanded.replace(/\//g, '\\').split('\\');
+  const cleaned = parts.map((seg, i) => {
+    if (unc && i < 2) return seg; // keep \\server\share
+    if (i === 0 && /^[A-Za-z]:$/.test(seg)) return seg; // drive
+    if (i === 0 && seg === '') return ''; // leading /
+    return seg.replace(/[:*?"<>|\u0000-\u001f]/g, '_').replace(/\.\.+/g, '.').replace(/^\.+$/, '_');
+  });
+  let out = cleaned.join(expanded.includes('/') && !unc ? '/' : '\\');
+  if (unc && !out.startsWith('\\\\')) out = '\\\\' + out.replace(/^\\+/, '');
+  return out;
 }
 
 export function sanitiseFilename(name: string) {

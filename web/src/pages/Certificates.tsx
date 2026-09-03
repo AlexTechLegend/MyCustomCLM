@@ -16,6 +16,8 @@ export function Certificates() {
   const source = params.get('source') ?? 'all';
   const sort = params.get('sort') ?? 'expiry';
   const profileId = params.get('profileId') ?? undefined;
+  const tag = params.get('tag') ?? undefined;
+  const groupId = params.get('groupId') ?? undefined;
 
   // Local state for the search box so fast typing is never throttled by URL updates.
   const [search, setSearch] = useState(q);
@@ -36,8 +38,9 @@ export function Certificates() {
     setParams(next, { replace: true });
   };
 
-  const all = useQuery({ queryKey: ['certificates', { profileId }], queryFn: () => api.certificates({ profileId, sort: 'expiry' }) });
+  const all = useQuery({ queryKey: ['certificates', { profileId, tag, groupId }], queryFn: () => api.certificates({ profileId, tag, groupId, sort: 'expiry' }) });
   const profiles = useQuery({ queryKey: ['profiles'], queryFn: api.profiles });
+  const tagsMeta = useQuery({ queryKey: ['tags'], queryFn: api.tags });
 
   const filtered = useMemo(() => {
     let list = all.data ?? [];
@@ -90,7 +93,23 @@ export function Certificates() {
             { id: 'expired', label: 'Expired', count: counts.expired },
           ]}
         />
-        <div className="flex items-center gap-2 ml-auto shrink-0">
+        <div className="flex items-center gap-2 ml-auto shrink-0 flex-wrap justify-end">
+          <div className="w-40">
+            <Select value={tag ?? 'all'} onChange={(e) => set({ tag: e.target.value === 'all' ? undefined : e.target.value, groupId: undefined })} className="h-8 text-[13px] rounded-lg">
+              <option value="all">All tags</option>
+              {(tagsMeta.data?.tags ?? []).map((t) => (
+                <option key={t.tag} value={t.tag}>{t.tag} ({t.count})</option>
+              ))}
+            </Select>
+          </div>
+          <div className="w-44">
+            <Select value={groupId ?? 'all'} onChange={(e) => set({ groupId: e.target.value === 'all' ? undefined : e.target.value, tag: undefined })} className="h-8 text-[13px] rounded-lg">
+              <option value="all">All groups</option>
+              {(tagsMeta.data?.groups ?? []).map((g) => (
+                <option key={g.id} value={g.id}>{g.name}</option>
+              ))}
+            </Select>
+          </div>
           <div className="w-40">
             <Select value={source} onChange={(e) => set({ source: e.target.value })} className="h-8 text-[13px] rounded-lg">
               <option value="all">All sources</option>
@@ -111,10 +130,29 @@ export function Certificates() {
         </div>
       </div>
 
-      {profileId && (
-        <div className="mb-4 text-[13px] text-ink-600 flex items-center gap-2">
-          Showing certificates linked to <Badge tone="brand">{profileName(profileId)}</Badge>
-          <button type="button" className="text-brand-700 font-medium hover:underline" onClick={() => set({ profileId: undefined })}>Clear</button>
+      {(profileId || tag || groupId) && (
+        <div className="mb-4 text-[13px] text-ink-600 flex flex-wrap items-center gap-2">
+          {profileId && (
+            <>
+              Profile <Badge tone="brand">{profileName(profileId)}</Badge>
+            </>
+          )}
+          {tag && (
+            <>
+              Tag <Badge tone="brand">{tag}</Badge>
+            </>
+          )}
+          {groupId && (
+            <>
+              Group <Badge tone="brand">{tagsMeta.data?.groups.find((g) => g.id === groupId)?.name ?? '…'}</Badge>
+              {!!tagsMeta.data?.groups.find((g) => g.id === groupId)?.tags.length && (
+                <span className="text-ink-400">({tagsMeta.data.groups.find((g) => g.id === groupId)!.tags.join(', ')})</span>
+              )}
+            </>
+          )}
+          <button type="button" className="text-brand-700 font-medium hover:underline" onClick={() => set({ profileId: undefined, tag: undefined, groupId: undefined })}>
+            Clear filters
+          </button>
         </div>
       )}
 

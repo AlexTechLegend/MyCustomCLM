@@ -205,10 +205,10 @@ export function CertificateDetail() {
 
         <div className="space-y-6">
           <Card>
-            <CardHeader title="Reference profiles" description="Outputs rendered and deployed on every renewal." action={<LinkButton to="/profiles/new" size="sm" variant="ghost">New</LinkButton>} />
+            <CardHeader title="Output profiles" description="Formats rendered and deployed on every renewal." action={<LinkButton to="/profiles/new" size="sm" variant="ghost">New</LinkButton>} />
             {profiles.data?.length === 0 ? (
               <p className="text-[13px] text-ink-500">
-                No profiles yet. <Link to="/profiles/new" className="text-brand-700 font-medium">Create one</Link> from your reference files.
+                No profiles yet. <Link to="/profiles/new" className="text-brand-700 font-medium">Create one</Link> with the format builder or a reference file.
               </p>
             ) : (
               <ul className="space-y-3">
@@ -227,8 +227,27 @@ export function CertificateDetail() {
           </Card>
 
           <Card>
+            <CardHeader
+              title="Deploy location"
+              description="Optional override for this certificate. When set, renewals copy outputs here instead of the profile path."
+              action={<Button size="sm" variant="ghost" onClick={() => setEdit(true)}>Edit</Button>}
+            />
+            {c.destinationOverride ? (
+              <div className="font-mono text-[13px] text-ink-900 break-all">{c.destinationOverride}</div>
+            ) : (
+              <p className="text-[13px] text-ink-500">Using each linked profile&apos;s deploy location{c.profileIds.length ? '.' : ' once a profile is linked.'}</p>
+            )}
+          </Card>
+
+          <Card>
             <CardHeader title="Tags & notes" action={<Button size="sm" variant="ghost" onClick={() => setEdit(true)}>Edit</Button>} />
-            <div className="flex flex-wrap gap-1.5 mb-3">{c.tags.length ? c.tags.map((t) => <Badge key={t}>{t}</Badge>) : <span className="text-[13px] text-ink-400">No tags</span>}</div>
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              {c.tags.length ? c.tags.map((t) => (
+                <Link key={t} to={`/certificates?tag=${encodeURIComponent(t)}`}>
+                  <Badge>{t}</Badge>
+                </Link>
+              )) : <span className="text-[13px] text-ink-400">No tags</span>}
+            </div>
             <p className="text-[13px] text-ink-700 whitespace-pre-wrap">{c.notes || <span className="text-ink-400">No notes</span>}</p>
           </Card>
 
@@ -260,7 +279,20 @@ export function CertificateDetail() {
       </div>
 
       {edit && (
-        <EditModal open onClose={() => setEdit(false)} initial={{ name: c.name, tags: c.tags.join(', '), notes: c.notes }} saving={update.isPending} onSave={(v) => update.mutate({ name: v.name, tags: v.tags.split(',').map((s) => s.trim()).filter(Boolean), notes: v.notes })} />
+        <EditModal
+          open
+          onClose={() => setEdit(false)}
+          initial={{ name: c.name, tags: c.tags.join(', '), notes: c.notes, destinationOverride: c.destinationOverride }}
+          saving={update.isPending}
+          onSave={(v) =>
+            update.mutate({
+              name: v.name,
+              tags: v.tags.split(',').map((s) => s.trim()).filter(Boolean),
+              notes: v.notes,
+              destinationOverride: v.destinationOverride,
+            })
+          }
+        />
       )}
       {download && <DownloadModal open onClose={() => setDownload(false)} id={c.id} hasKey={c.hasKey} chainCount={c.chainCount} />}
       <Modal
@@ -281,13 +313,30 @@ export function CertificateDetail() {
   );
 }
 
-function EditModal({ open, onClose, initial, onSave, saving }: { open: boolean; onClose: () => void; initial: { name: string; tags: string; notes: string }; onSave: (v: { name: string; tags: string; notes: string }) => void; saving: boolean }) {
+function EditModal({
+  open,
+  onClose,
+  initial,
+  onSave,
+  saving,
+}: {
+  open: boolean;
+  onClose: () => void;
+  initial: { name: string; tags: string; notes: string; destinationOverride: string };
+  onSave: (v: { name: string; tags: string; notes: string; destinationOverride: string }) => void;
+  saving: boolean;
+}) {
   const [v, setV] = useState(initial);
   return (
     <Modal open={open} onClose={onClose} title="Edit certificate" footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" loading={saving} onClick={() => onSave(v)}>Save</Button></>}>
       <div className="space-y-4">
         <Field label="Display name"><Input value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} /></Field>
-        <Field label="Tags" hint="Comma separated"><Input value={v.tags} onChange={(e) => setV({ ...v, tags: e.target.value })} placeholder="web, prod, iis" /></Field>
+        <Field label="Tags" hint="Comma separated. Each certificate keeps its own unique tags; groups collect them for filtering.">
+          <Input value={v.tags} onChange={(e) => setV({ ...v, tags: e.target.value })} placeholder="web, prod, iis" />
+        </Field>
+        <Field label="Deploy location override" hint="Leave empty to use the linked profile’s path. Absolute or UNC, tokens like {cn_safe} allowed.">
+          <Input value={v.destinationOverride} onChange={(e) => setV({ ...v, destinationOverride: e.target.value })} placeholder="C:\Windows\Temp  or  \\fileserver\certs\{cn_safe}" className="font-mono text-[13px]" />
+        </Field>
         <Field label="Notes"><Textarea value={v.notes} onChange={(e) => setV({ ...v, notes: e.target.value })} /></Field>
       </div>
     </Modal>

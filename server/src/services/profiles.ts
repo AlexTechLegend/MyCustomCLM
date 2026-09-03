@@ -62,12 +62,16 @@ export function normaliseSpec(input: Partial<OutputSpec>, existing?: OutputSpec)
   };
 }
 
-function validateDestination(p: string) {
+export function validateDestination(p: string) {
   const trimmed = p.trim();
   if (!trimmed) return '';
-  const isWinAbs = /^[A-Za-z]:[\\/]/.test(trimmed) || trimmed.startsWith('\\\\');
-  if (!path.isAbsolute(trimmed) && !isWinAbs) {
-    throw new Error('Destination path must be absolute (for example /etc/ssl/webfarm or D:\\Certs\\WebFarm).');
+  // Blank tokens so "{cn_safe}" does not look relative.
+  const withTokensBlanked = trimmed.replace(/\{[a-z_]+\}/gi, 'x');
+  const isWinAbs = /^[A-Za-z]:[\\/]/.test(withTokensBlanked) || withTokensBlanked.startsWith('\\\\');
+  if (!path.isAbsolute(withTokensBlanked) && !isWinAbs) {
+    throw new Error(
+      'Deploy path must be absolute or a UNC share (for example /etc/ssl/webfarm, C:\\Windows\\Temp, D:\\Certs\\{cn_safe}, or \\\\fileserver\\certs\\web).',
+    );
   }
   return trimmed;
 }

@@ -26,12 +26,43 @@ export function Renew() {
           <ChevronRight className="size-3.5 rotate-180" /> {c.name}
         </Link>
       </div>
-      {renewalId ? <RenewalResult renewalId={renewalId} certId={c.id} /> : <RenewForm certId={c.id} certName={c.name} hasKey={c.hasKey} linkedProfileIds={c.profileIds} notAfter={c.notAfter} status={c.status} days={c.daysRemaining} />}
+      {renewalId ? (
+        <RenewalResult renewalId={renewalId} certId={c.id} />
+      ) : (
+        <RenewForm
+          certId={c.id}
+          certName={c.name}
+          hasKey={c.hasKey}
+          linkedProfileIds={c.profileIds}
+          destinationOverride={c.destinationOverride}
+          notAfter={c.notAfter}
+          status={c.status}
+          days={c.daysRemaining}
+        />
+      )}
     </>
   );
 }
 
-function RenewForm({ certId, certName, hasKey, linkedProfileIds, notAfter, status, days }: { certId: string; certName: string; hasKey: boolean; linkedProfileIds: string[]; notAfter: string; status: Parameters<typeof StatusBadge>[0]['status']; days: number }) {
+function RenewForm({
+  certId,
+  certName,
+  hasKey,
+  linkedProfileIds,
+  destinationOverride,
+  notAfter,
+  status,
+  days,
+}: {
+  certId: string;
+  certName: string;
+  hasKey: boolean;
+  linkedProfileIds: string[];
+  destinationOverride: string;
+  notAfter: string;
+  status: Parameters<typeof StatusBadge>[0]['status'];
+  days: number;
+}) {
   const nav = useNavigate();
   const qc = useQueryClient();
   const toast = useToast();
@@ -64,10 +95,12 @@ function RenewForm({ certId, certName, hasKey, linkedProfileIds, notAfter, statu
   });
 
   const selected = (profiles.data ?? []).filter((p) => profileIds.includes(p.id));
-  const destinations = [...new Set(selected.map((p) => p.destinationPath).filter(Boolean))];
+  const destinations = destinationOverride
+    ? [destinationOverride]
+    : [...new Set(selected.map((p) => p.destinationPath).filter(Boolean))];
   const fileCount = selected.reduce((n, p) => n + p.outputs.length, 0);
   const b = settings.data?.baselines;
-  const estimate = b ? (method === 'csr' ? b.csr : 0) + b.renewal + b.conversion * fileCount + (deploy ? b.deployment * destinations.length : 0) : 0;
+  const estimate = b ? (method === 'csr' ? b.csr : 0) + b.renewal + b.conversion * fileCount + (deploy ? b.deployment * Math.max(destinations.length, destinations.length ? 1 : 0) : 0) : 0;
 
   return (
     <>
@@ -149,8 +182,14 @@ function RenewForm({ certId, certName, hasKey, linkedProfileIds, notAfter, statu
                 checked={deploy}
                 onChange={setDeploy}
                 disabled={destinations.length === 0}
-                label="Write files to destination paths"
-                description={destinations.length ? destinations.join(' · ') : 'None of the selected profiles has a destination path.'}
+                label="Copy files to deploy location"
+                description={
+                  destinations.length
+                    ? destinationOverride
+                      ? `Certificate override: ${destinationOverride}`
+                      : destinations.join(' · ')
+                    : 'Set a deploy location on this certificate or on a selected profile.'
+                }
               />
             </div>
           </Card>
