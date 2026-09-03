@@ -12,5 +12,16 @@ export default defineConfig({
     port: 5173,
     proxy: { '/api': { target: 'http://localhost:4180', changeOrigin: true } },
   },
-  build: { outDir: 'dist', emptyOutDir: true },
+  build: {
+    outDir: 'dist',
+    emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ['react', 'react-dom', 'react-router-dom', '@tanstack/react-query'],
+          charts: ['recharts'],
+        },
+      },
+    },
+  },
 });

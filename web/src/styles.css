@@ -1,0 +1,94 @@
+@import '@fontsource-variable/inter';
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Inter Variable', Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: ui-monospace, 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+
+  --color-canvas: #f7f8fa;
+  --color-surface: #ffffff;
+
+  --color-ink-950: #0b1220;
+  --color-ink-900: #111a2e;
+  --color-ink-800: #1e293b;
+  --color-ink-700: #334155;
+  --color-ink-600: #475569;
+  --color-ink-500: #64748b;
+  --color-ink-400: #94a3b8;
+  --color-ink-300: #cbd5e1;
+  --color-ink-200: #e2e8f0;
+  --color-ink-100: #f1f5f9;
+  --color-ink-50: #f8fafc;
+
+  --color-brand-900: #063d3c;
+  --color-brand-800: #084d4c;
+  --color-brand-700: #0b5e5c;
+  --color-brand-600: #0e7c7b;
+  --color-brand-500: #14a19f;
+  --color-brand-400: #3dbdbb;
+  --color-brand-300: #7fd6d4;
+  --color-brand-200: #b6e8e7;
+  --color-brand-100: #ddf3f2;
+  --color-brand-50: #eef8f8;
+
+  --color-ok-700: #166534;
+  --color-ok-600: #15803d;
+  --color-ok-500: #22c55e;
+  --color-ok-100: #dcfce7;
+  --color-ok-50: #f0fdf4;
+
+  --color-warn-700: #92400e;
+  --color-warn-600: #b45309;
+  --color-warn-500: #f59e0b;
+  --color-warn-100: #fef3c7;
+  --color-warn-50: #fffbeb;
+
+  --color-crit-700: #9f1239;
+  --color-crit-600: #be123c;
+  --color-crit-500: #f43f5e;
+  --color-crit-100: #ffe4e6;
+  --color-crit-50: #fff1f2;
+
+  --color-dead-600: #475569;
+  --color-dead-500: #64748b;
+  --color-dead-100: #f1f5f9;
+
+  --radius-xl: 0.875rem;
+  --radius-2xl: 1.125rem;
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    @apply bg-canvas text-ink-700 font-sans text-[14px] leading-6;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+  h1, h2, h3, h4 {
+    @apply text-ink-950 font-semibold tracking-tight;
+  }
+  ::selection {
+    @apply bg-brand-100 text-brand-900;
+  }
+  *:focus-visible {
+    @apply outline-none ring-2 ring-brand-500/60 ring-offset-2 ring-offset-canvas;
+  }
+  input::placeholder, textarea::placeholder {
+    @apply text-ink-400;
+  }
+}
+
+@utility tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+@utility card {
+  @apply bg-surface border border-ink-200 rounded-2xl;
+}
+
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-ink-300) transparent;
+}
