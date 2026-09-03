@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 168 48" width="168" height="48" role="img" aria-label="Vigil">
+  <title>Vigil wordmark</title>
+  <path d="M24 3.5 41 9.8v13.4c0 10.2-7.1 18.2-17 21.3C14.1 41.4 7 33.4 7 23.2V9.8Z" fill="#0E7C7B"/>
+  <path d="M30.36 17.64A9 9 0 1 0 32.69 26.33" fill="none" stroke="#FFFFFF" stroke-width="2.75" stroke-linecap="round"/>
+  <path d="m19.6 24.4 3.3 3.3 6.5-7.2" fill="none" stroke="#FFFFFF" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="54" y="31.5" font-family="Inter, 'Inter Variable', system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="24" font-weight="600" letter-spacing="-0.6" fill="#0B1220">Vigil</text>
+  <text x="115" y="31.5" font-family="Inter, 'Inter Variable', system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" font-weight="500" letter-spacing="1.8" fill="#64748B">CLM</text>
+</svg>
