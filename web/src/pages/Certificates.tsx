@@ -313,14 +313,14 @@ export function Certificates() {
               key={v.id}
               className={clsx(
                 'inline-flex items-center gap-1 h-8 rounded-lg border px-2.5 text-[13px] font-medium',
-                active ? 'bg-brand-50 text-brand-800 border-brand-300' : 'bg-surface text-ink-600 border-ink-200',
+                active ? 'bg-brand-600 text-white border-brand-600' : 'bg-surface text-ink-700 border-line',
               )}
             >
-              <button type="button" onClick={() => applyView(v)} className="hover:text-ink-950">
+              <button type="button" onClick={() => applyView(v)} className={active ? 'hover:text-white' : 'hover:text-ink-950'}>
                 {v.name}
               </button>
               {!v.builtin && (
-                <button type="button" aria-label={`Delete view ${v.name}`} className="rounded p-0.5 text-ink-400 hover:text-ink-800" onClick={() => setDeleteViewTarget(v)}>
+                <button type="button" aria-label={`Delete view ${v.name}`} className={clsx('rounded p-0.5', active ? 'text-white/70 hover:text-white' : 'text-ink-400 hover:text-ink-800')} onClick={() => setDeleteViewTarget(v)}>
                   <X className="size-3" />
                 </button>
               )}
@@ -546,7 +546,7 @@ export function Certificates() {
                       onClick={() => set({ page: item === 1 ? undefined : String(item) })}
                       className={clsx(
                         'size-8 rounded-lg text-[13px] font-medium tnum',
-                        item === safePage ? 'bg-ink-950 text-white' : 'text-ink-600 hover:bg-ink-100',
+                        item === safePage ? 'bg-text text-canvas' : 'text-ink-600 hover:bg-ink-100',
                       )}
                     >
                       {item}

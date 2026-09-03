@@ -122,7 +122,7 @@ export function CertRowMenu({ cert }: { cert: Certificate }) {
             role="menu"
             aria-label="Certificate actions"
             style={{ top: pos.top, right: pos.right }}
-            className="fixed z-[70] min-w-[200px] py-1 card p-0 shadow-lg shadow-ink-950/10"
+            className="fixed z-[70] min-w-[200px] py-1 card p-0 shadow-lg shadow-black/15"
           >
             <button type="button" role="menuitem" className={ITEM_CLASS} onClick={() => nav(`/certificates/${cert.id}/renew`)}>
               <RefreshCw className="size-3.5 text-ink-400" /> Renew

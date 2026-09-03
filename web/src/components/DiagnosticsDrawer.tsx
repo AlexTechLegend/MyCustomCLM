@@ -77,9 +77,9 @@ export function DiagnosticsDrawer({ open, onClose }: { open: boolean; onClose: (
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
-      <div className="absolute inset-0 bg-ink-950/40" onClick={onClose} />
-      <aside role="dialog" aria-label="Diagnostics" className="relative w-full max-w-lg h-full bg-surface border-l border-ink-200 shadow-2xl flex flex-col">
-        <div className="px-5 pt-5 pb-3 flex items-start justify-between gap-3 border-b border-ink-100">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <aside role="dialog" aria-label="Diagnostics" className="relative w-full max-w-lg h-full bg-surface border-l border-line shadow-2xl flex flex-col">
+        <div className="px-5 pt-5 pb-3 flex items-start justify-between gap-3 border-b border-line">
           <div>
             <h2 className="text-lg font-semibold text-ink-950">Diagnostics</h2>
             <p className="text-[13px] text-ink-500 mt-0.5">Recent failures with the command trail. Nothing is persisted here.</p>

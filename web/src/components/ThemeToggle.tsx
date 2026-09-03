@@ -36,7 +36,7 @@ export function ThemeToggle({ className }: { className?: string }) {
       onClick={next}
       className={clsx(
         'inline-flex items-center gap-2 rounded-xl px-3 h-10 text-sm font-medium transition-colors',
-        'text-ink-400 hover:text-white hover:bg-white/6',
+        'text-white/60 hover:text-white hover:bg-white/8',
         className,
       )}
       aria-label={`Theme: ${label}. Click to change.`}

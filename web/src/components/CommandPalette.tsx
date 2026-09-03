@@ -183,12 +183,12 @@ export function CommandPalette({
 
   return (
     <div className="fixed inset-0 z-[70] flex items-start justify-center pt-[12vh] px-4">
-      <div className="absolute inset-0 bg-ink-950/45 backdrop-blur-md" onClick={() => setOpen(false)} />
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-md" onClick={() => setOpen(false)} />
       <div
         role="dialog"
         aria-modal
         aria-label="Command palette"
-        className="relative w-full max-w-xl card p-0 shadow-2xl shadow-ink-950/30 overflow-hidden"
+        className="relative w-full max-w-xl card p-0 shadow-2xl shadow-black/30 overflow-hidden"
       >
         <div className="flex items-center gap-3 px-4 border-b border-ink-100">
           <Search className="size-4 text-ink-400 shrink-0" />

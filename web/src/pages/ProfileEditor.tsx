@@ -181,7 +181,7 @@ export function ProfileEditor() {
                               serverTags: on ? form.serverTags.filter((x) => x !== t.tag) : [...form.serverTags, t.tag],
                             })
                           }
-                          className={`h-8 rounded-lg px-2.5 text-[13px] font-medium border transition-colors ${on ? 'bg-brand-600 text-white border-brand-600' : 'bg-white/60 text-ink-700 border-ink-200 hover:border-ink-300'}`}
+                          className={`h-8 rounded-lg px-2.5 text-[13px] font-medium border transition-colors ${on ? 'bg-brand-600 text-white border-brand-600' : 'bg-surface text-ink-700 border-line hover:border-line-strong'}`}
                         >
                           {t.tag}
                         </button>
@@ -368,7 +368,7 @@ function SpecEditor({
   const keyish = ['pem-key', 'pem-key-encrypted', 'pem-bundle'].includes(spec.format);
   const [showPreview, setShowPreview] = useState(false);
   return (
-    <div className="rounded-xl border border-ink-200/80 bg-white/40 p-4">
+    <div className="rounded-xl border border-line bg-surface-raised p-4">
       <div className="flex items-start gap-3">
         <div className="flex flex-col items-center gap-0.5 text-ink-300 pt-1">
           <button type="button" className="hover:text-ink-600 disabled:opacity-30" disabled={index === 0} onClick={() => onMove(-1)} aria-label="Move up">
@@ -514,10 +514,10 @@ function BuilderModal({ onClose, onAdd, destinationPath }: { onClose: () => void
                   onMouseEnter={() => setFocusId(p.id)}
                   className={`w-full text-left rounded-xl border p-3.5 transition-colors ${
                     on
-                      ? 'border-brand-500 bg-brand-50/70 ring-1 ring-brand-500'
+                      ? 'border-brand-500 bg-brand-50 ring-1 ring-brand-500'
                       : focusedOn
-                        ? 'border-ink-300 bg-white/80'
-                        : 'border-ink-200 hover:border-ink-300 bg-white/50'
+                        ? 'border-line-strong bg-surface-raised'
+                        : 'border-line hover:border-line-strong bg-surface'
                   }`}
                 >
                   <div className="flex items-start gap-3">
