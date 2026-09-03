@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Building2, CheckCircle2, ChevronRight, Download, FileSignature, FolderOutput, Landmark, RefreshCw, Terminal, Timer, XCircle } from 'lucide-react';
+import { Building2, CheckCircle2, ChevronRight, Download, FileSignature, FolderOutput, Landmark, Plus, RefreshCw, Terminal, Timer, X, XCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { FileDrop } from '@/components/FileDrop';
@@ -7,7 +7,7 @@ import { useToast } from '@/components/Toast';
 import { Badge, Button, Card, CardHeader, Checkbox, CodeBlock, CommandTrail, ErrorBox, Field, Input, LinkButton, Loading, PageHeader, RadioCard, Select, StatusBadge, Toggle } from '@/components/ui';
 import { api } from '@/lib/api';
 import { bytes, FORMAT_SHORT, formatDate, formatNeedsKey, humanMinutes } from '@/lib/format';
-import type { KeyMode, Renewal, RenewalMethod } from '@/types';
+import type { Certificate, IdentityTemplate, KeyMode, Renewal, RenewalMethod } from '@/types';
 
 export function Renew() {
   const { id = '' } = useParams();
@@ -29,44 +29,37 @@ export function Renew() {
       {renewalId ? (
         <RenewalResult renewalId={renewalId} certId={c.id} />
       ) : (
-        <RenewForm
-          certId={c.id}
-          certName={c.name}
-          hasKey={c.hasKey}
-          linkedProfileIds={c.profileIds}
-          destinationOverride={c.destinationOverride}
-          notAfter={c.notAfter}
-          status={c.status}
-          days={c.daysRemaining}
-        />
+        <RenewForm cert={c} />
       )}
     </>
   );
 }
 
-function RenewForm({
-  certId,
-  certName,
-  hasKey,
-  linkedProfileIds,
-  destinationOverride,
-  notAfter,
-  status,
-  days,
-}: {
-  certId: string;
-  certName: string;
-  hasKey: boolean;
-  linkedProfileIds: string[];
-  destinationOverride: string;
-  notAfter: string;
-  status: Parameters<typeof StatusBadge>[0]['status'];
-  days: number;
-}) {
+function parseSubject(subject: string): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const part of subject.split(',')) {
+    const i = part.indexOf('=');
+    if (i > 0) map[part.slice(0, i).trim()] = part.slice(i + 1).trim();
+  }
+  return map;
+}
+
+function RenewForm({ cert }: { cert: Certificate }) {
+  const certId = cert.id;
+  const certName = cert.name;
+  const hasKey = cert.hasKey;
+  const linkedProfileIds = cert.profileIds;
+  const destinationOverride = cert.destinationOverride;
+  const notAfter = cert.notAfter;
+  const status = cert.status;
+  const days = cert.daysRemaining;
+  const initialDn = parseSubject(cert.subject);
+
   const nav = useNavigate();
   const qc = useQueryClient();
   const toast = useToast();
-  const profiles = useQuery({ queryKey: ['profiles'], queryFn: api.profiles });
+  const profiles = useQuery({ queryKey: ['profiles', certId], queryFn: () => api.profiles(certId) });
+  const identities = useQuery({ queryKey: ['identities'], queryFn: api.identities });
   const ca = useQuery({ queryKey: ['ca'], queryFn: api.ca });
   const settings = useQuery({ queryKey: ['settings'], queryFn: api.settings });
 
@@ -75,6 +68,16 @@ function RenewForm({
   const [validityDays, setValidityDays] = useState<number>(397);
   const [profileIds, setProfileIds] = useState<string[]>(linkedProfileIds);
   const [deploy, setDeploy] = useState(true);
+  const [identityId, setIdentityId] = useState('');
+  const [commonName, setCommonName] = useState(cert.commonName);
+  const [sans, setSans] = useState<string[]>(cert.sans.length ? cert.sans : [cert.commonName]);
+  const [sanDraft, setSanDraft] = useState('');
+  const [country, setCountry] = useState(initialDn.C ?? '');
+  const [state, setState] = useState(initialDn.ST ?? '');
+  const [locality, setLocality] = useState(initialDn.L ?? '');
+  const [organisation, setOrganisation] = useState(initialDn.O ?? '');
+  const [organisationalUnit, setOrganisationalUnit] = useState(initialDn.OU ?? '');
+  const [email, setEmail] = useState(initialDn.emailAddress ?? '');
 
   useEffect(() => {
     if (settings.data) setValidityDays(settings.data.defaultValidityDays);
@@ -83,8 +86,47 @@ function RenewForm({
     if (ca.data && !ca.data.exists && method === 'internal-ca') setMethod('csr');
   }, [ca.data, method]);
 
+  const applyIdentity = (t: IdentityTemplate | undefined) => {
+    if (!t) {
+      setIdentityId('');
+      return;
+    }
+    setIdentityId(t.id);
+    setCountry(t.country);
+    setState(t.state);
+    setLocality(t.locality);
+    setOrganisation(t.organisation);
+    setOrganisationalUnit(t.organisationalUnit);
+    setEmail(t.email);
+    if (t.defaultKeyMode !== 'reuse' || hasKey) setKeyMode(t.defaultKeyMode);
+    setValidityDays(t.defaultValidityDays);
+  };
+
+  const addSan = () => {
+    const v = sanDraft.trim();
+    if (!v || sans.includes(v)) return;
+    setSans([...sans, v]);
+    setSanDraft('');
+  };
+
   const start = useMutation({
-    mutationFn: () => api.renew(certId, { method, keyMode, validityDays, profileIds, deploy }),
+    mutationFn: () =>
+      api.renew(certId, {
+        method,
+        keyMode,
+        validityDays,
+        profileIds,
+        deploy,
+        commonName,
+        sans,
+        country,
+        state,
+        locality,
+        organisation,
+        organisationalUnit,
+        email,
+        identityTemplateId: identityId || undefined,
+      }),
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ['certificate', certId] });
       qc.invalidateQueries({ queryKey: ['certificates'] });
@@ -110,7 +152,7 @@ function RenewForm({
             Renew {certName} <StatusBadge status={status} days={days} />
           </span>
         }
-        description={`Currently valid until ${formatDate(notAfter)}. Subject and SANs are carried over unchanged.`}
+        description={`Currently valid until ${formatDate(notAfter)}. Review the common name and SANs before you issue — add or remove names here.`}
       />
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <div className="xl:col-span-2 space-y-6">
@@ -131,7 +173,105 @@ function RenewForm({
           </Card>
 
           <Card>
-            <CardHeader title="2. Key and validity" />
+            <CardHeader
+              title="2. Names"
+              description="These become the new certificate’s common name and subject alternative names. Removing a SAN drops it from the next issuance."
+            />
+            <Field label="Common name" required>
+              <Input value={commonName} onChange={(e) => setCommonName(e.target.value)} className="font-mono text-[13px]" />
+            </Field>
+            <div className="mt-4">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[13px] font-medium text-ink-800">Subject alternative names</span>
+                <button
+                  type="button"
+                  className="text-[12px] text-brand-700 font-medium hover:underline"
+                  onClick={() => {
+                    setCommonName(cert.commonName);
+                    setSans(cert.sans.length ? cert.sans : [cert.commonName]);
+                  }}
+                >
+                  Reset to current
+                </button>
+              </div>
+              <ul className="flex flex-wrap gap-1.5 mb-3">
+                {sans.map((s) => (
+                  <li key={s} className="inline-flex items-center gap-1 rounded-lg bg-ink-100/80 border border-ink-200 px-2 py-1 text-[12px] font-mono text-ink-800">
+                    {s}
+                    <button type="button" onClick={() => setSans(sans.filter((x) => x !== s))} className="text-ink-400 hover:text-crit-600" aria-label={`Remove ${s}`}>
+                      <X className="size-3" />
+                    </button>
+                  </li>
+                ))}
+                {sans.length === 0 && <li className="text-[13px] text-ink-500">No SANs — the common name will be used.</li>}
+              </ul>
+              <div className="flex gap-2">
+                <Input
+                  value={sanDraft}
+                  onChange={(e) => setSanDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addSan();
+                    }
+                  }}
+                  placeholder="www.portal.contoso.com or IP:10.0.0.8"
+                  className="font-mono text-[13px]"
+                />
+                <Button type="button" icon={<Plus className="size-3.5" />} onClick={addSan} disabled={!sanDraft.trim()}>
+                  Add
+                </Button>
+              </div>
+            </div>
+          </Card>
+
+          <Card>
+            <CardHeader
+              title="3. Identity"
+              description="Apply a saved organisation template, or edit the distinguished-name fields for this renewal only."
+              action={<LinkButton to="/identities" size="sm" variant="ghost">Manage templates</LinkButton>}
+            />
+            {identities.data?.length ? (
+              <Field label="Identity template">
+                <Select
+                  value={identityId}
+                  onChange={(e) => applyIdentity(identities.data.find((t) => t.id === e.target.value))}
+                >
+                  <option value="">Keep current subject fields</option>
+                  {identities.data.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            ) : (
+              <p className="text-[13px] text-ink-500 mb-4">No identity templates yet. Current subject fields are prefilled.</p>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
+              <Field label="Country (C)">
+                <Input value={country} onChange={(e) => setCountry(e.target.value)} maxLength={2} className="uppercase" />
+              </Field>
+              <Field label="State (ST)">
+                <Input value={state} onChange={(e) => setState(e.target.value)} />
+              </Field>
+              <Field label="Locality (L)">
+                <Input value={locality} onChange={(e) => setLocality(e.target.value)} />
+              </Field>
+              <Field label="Organisation (O)">
+                <Input value={organisation} onChange={(e) => setOrganisation(e.target.value)} />
+              </Field>
+              <Field label="Unit (OU)">
+                <Input value={organisationalUnit} onChange={(e) => setOrganisationalUnit(e.target.value)} />
+              </Field>
+              <Field label="Email">
+                <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+              </Field>
+            </div>
+          </Card>
+
+          <Card>
+            <CardHeader title="4. Key and validity" />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Field label="Private key" hint={hasKey ? 'Reusing keeps existing pinning; a new key is best practice.' : 'No key in the vault — a new key will be generated.'}>
                 <Select value={keyMode} onChange={(e) => setKeyMode(e.target.value as KeyMode)}>
@@ -150,18 +290,23 @@ function RenewForm({
           </Card>
 
           <Card>
-            <CardHeader title="3. Outputs" description="Reference profiles to render once the new certificate is issued." action={<LinkButton to="/profiles/new" size="sm" variant="ghost">New profile</LinkButton>} />
+            <CardHeader title="5. Outputs" description="General profiles always appear. Specialized profiles only show when this certificate matches their tags or assignments." action={<LinkButton to="/profiles/new" size="sm" variant="ghost">New profile</LinkButton>} />
             {profiles.data?.length ? (
               <ul className="space-y-3">
-                {profiles.data.map((p) => (
-                  <li key={p.id}>
+                {profiles.data.map((p) => {
+                  const available = p.applicable !== false;
+                  return (
+                  <li key={p.id} className={available ? '' : 'opacity-50'}>
                     <Checkbox
                       checked={profileIds.includes(p.id)}
+                      disabled={!available && !profileIds.includes(p.id)}
                       onChange={(on) => setProfileIds(on ? [...profileIds, p.id] : profileIds.filter((x) => x !== p.id))}
                       label={
-                        <span className="inline-flex items-center gap-2">
+                        <span className="inline-flex items-center gap-2 flex-wrap">
                           {p.name}
                           {linkedProfileIds.includes(p.id) && <Badge tone="brand">Linked</Badge>}
+                          <Badge tone={p.scope === 'specialized' ? 'warn' : 'neutral'}>{p.scope === 'specialized' ? 'Specialized' : 'General'}</Badge>
+                          {!available && <span className="text-[11px] text-ink-500">Not assigned to this certificate</span>}
                         </span>
                       }
                       description={
@@ -172,7 +317,8 @@ function RenewForm({
                       }
                     />
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             ) : (
               <p className="text-[13px] text-ink-500">No profiles yet — the renewed certificate will still be available for ad-hoc download in any format.</p>
@@ -208,7 +354,7 @@ function RenewForm({
             <CardHeader title="What will happen" />
             <ol className="text-[13px] text-ink-700 space-y-2 list-decimal pl-4">
               <li>{keyMode === 'reuse' ? 'Reuse the vaulted private key.' : `Generate a new ${keyMode.toUpperCase().replace('-', ' ')} key with openssl genpkey.`}</li>
-              <li>Build a CSR with the current subject and SANs.</li>
+              <li>Build a CSR for {commonName || 'this certificate'} with {sans.length} SAN{sans.length === 1 ? '' : 's'}.</li>
               {method === 'internal-ca' && <li>Sign it with the internal CA for {validityDays} days.</li>}
               {method === 'self-signed' && <li>Self-sign it for {validityDays} days.</li>}
               {method === 'csr' && <li>Hand you the CSR; wait for the signed certificate.</li>}
@@ -307,6 +453,7 @@ function RenewalResult({ renewalId, certId }: { renewalId: string; certId: strin
                 <Download className="size-4" /> Download all (.zip)
               </a>
             )}
+            <LinkButton to={`/certificates/${certId}/renew`}>Renew again</LinkButton>
             <LinkButton to={`/certificates/${certId}`}>Open certificate</LinkButton>
           </>
         }
@@ -336,11 +483,13 @@ function RenewalResult({ renewalId, certId }: { renewalId: string; certId: strin
                           {o.deployStatus === 'skipped' && <><FolderOutput className="size-3.5 text-ink-400" /> Staged for download{o.size ? ` · ${bytes(o.size)}` : ''}</>}
                         </div>
                       </div>
-                      {o.size > 0 && (
-                        <a href={`/api/renewals/${r.id}/outputs/${o.index}`} className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-ink-200 text-[13px] font-medium text-ink-800 hover:bg-ink-50">
-                          <Download className="size-3.5" /> Download
-                        </a>
-                      )}
+                          {o.size > 0 ? (
+                            <a href={`/api/renewals/${r.id}/outputs/${o.index}`} className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-ink-200 text-[13px] font-medium text-ink-800 hover:bg-ink-50">
+                              <Download className="size-3.5" /> Download
+                            </a>
+                          ) : (
+                            <span className="text-[11px] text-ink-400">Receipt only</span>
+                          )}
                     </li>
                   ))}
                 </ul>

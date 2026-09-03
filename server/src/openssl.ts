@@ -823,6 +823,62 @@ export function subjectComponentsToArg(components: string[]): string {
   }).join('/');
 }
 
+const SUBJECT_ORDER = ['C', 'ST', 'L', 'O', 'OU', 'emailAddress', 'CN'];
+
+export interface SubjectOverrides {
+  commonName?: string;
+  country?: string;
+  state?: string;
+  locality?: string;
+  organisation?: string;
+  organisationalUnit?: string;
+  email?: string;
+}
+
+function parseSubjectMap(components: string[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const c of components) {
+    const i = c.indexOf('=');
+    if (i <= 0) continue;
+    const key = c.slice(0, i).trim();
+    const value = c.slice(i + 1).trim();
+    if (key) map.set(key, value);
+  }
+  return map;
+}
+
+/** Merge optional DN overrides onto an existing subject, preserving unspecified fields. */
+export function mergeSubjectComponents(existing: string[], overrides: SubjectOverrides = {}): string[] {
+  const map = parseSubjectMap(existing);
+  const set = (key: string, value?: string) => {
+    if (value === undefined) return;
+    const trimmed = value.trim();
+    if (!trimmed) map.delete(key);
+    else map.set(key, trimmed);
+  };
+  set('C', overrides.country);
+  set('ST', overrides.state);
+  set('L', overrides.locality);
+  set('O', overrides.organisation);
+  set('OU', overrides.organisationalUnit);
+  set('emailAddress', overrides.email);
+  set('CN', overrides.commonName);
+  const result: string[] = [];
+  for (const key of SUBJECT_ORDER) {
+    const value = map.get(key);
+    if (value) result.push(`${key}=${value}`);
+    map.delete(key);
+  }
+  for (const [key, value] of map) result.push(`${key}=${value}`);
+  return result;
+}
+
+export function normaliseSans(sans: string[], fallbackCn?: string): string[] {
+  const cleaned = sans.map((s) => s.trim()).filter(Boolean);
+  if (cleaned.length) return [...new Set(cleaned)];
+  return fallbackCn?.trim() ? [fallbackCn.trim()] : [];
+}
+
 export function sanFromList(sans: string[]): string {
   return sans
     .map((s) => s.trim())

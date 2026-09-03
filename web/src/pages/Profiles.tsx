@@ -6,7 +6,7 @@ import { api } from '@/lib/api';
 import { FORMAT_SHORT } from '@/lib/format';
 
 export function Profiles() {
-  const q = useQuery({ queryKey: ['profiles'], queryFn: api.profiles });
+  const q = useQuery({ queryKey: ['profiles'], queryFn: () => api.profiles() });
   return (
     <>
       <PageHeader
@@ -36,8 +36,19 @@ export function Profiles() {
                   <h3 className="text-[15px] font-semibold text-ink-950 truncate">{p.name}</h3>
                   <p className="text-[13px] text-ink-500 mt-0.5 line-clamp-2">{p.description || 'No description'}</p>
                 </div>
-                <Badge tone="brand">{p.certificateCount ?? 0} cert{p.certificateCount === 1 ? '' : 's'}</Badge>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <Badge tone="brand">{p.certificateCount ?? 0} cert{p.certificateCount === 1 ? '' : 's'}</Badge>
+                  <Badge tone={p.scope === 'specialized' ? 'warn' : 'neutral'}>{p.scope === 'specialized' ? 'Specialized' : 'General'}</Badge>
+                </div>
               </div>
+              {p.scope === 'specialized' && ((p.serverTags ?? []).length > 0 || (p.certificateIds ?? []).length > 0) && (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {(p.serverTags ?? []).map((t) => (
+                    <span key={t} className="text-[11px] rounded-md bg-ink-100 text-ink-600 px-1.5 py-0.5">{t}</span>
+                  ))}
+                  {(p.certificateIds ?? []).length > 0 && <span className="text-[11px] text-ink-400">{p.certificateIds.length} assigned cert{p.certificateIds.length === 1 ? '' : 's'}</span>}
+                </div>
+              )}
               <ul className="mt-4 space-y-1.5 flex-1">
                 {p.outputs.map((o) => (
                   <li key={o.id} className="flex items-center gap-2 text-[13px]">

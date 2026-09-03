@@ -226,7 +226,13 @@ export function Dashboard() {
                   <li key={e.id} className="flex items-start gap-3">
                     <span className={`mt-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${EVENT_META[e.type]?.className ?? 'bg-ink-100'}`}>{EVENT_META[e.type]?.label ?? e.type}</span>
                     <div className="min-w-0 flex-1">
-                      <div className="text-[13px] text-ink-900 truncate">{e.title}</div>
+                      {e.renewalId && e.certificateId ? (
+                        <Link to={`/certificates/${e.certificateId}/renew?renewal=${e.renewalId}`} className="text-[13px] text-ink-900 hover:text-brand-700 truncate block">
+                          {e.title}
+                        </Link>
+                      ) : (
+                        <div className="text-[13px] text-ink-900 truncate">{e.title}</div>
+                      )}
                       <div className="text-[11px] text-ink-500 tnum">{timeAgo(e.createdAt)} · saved {humanMinutes(e.minutesSaved)}</div>
                     </div>
                   </li>

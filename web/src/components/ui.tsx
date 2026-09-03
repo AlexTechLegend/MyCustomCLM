@@ -11,10 +11,10 @@ type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
 type Size = 'sm' | 'md' | 'lg';
 
 const variantClass: Record<Variant, string> = {
-  primary: 'bg-brand-600 text-white hover:bg-brand-700 border border-transparent disabled:bg-brand-300',
-  secondary: 'bg-surface text-ink-800 border border-ink-200 hover:bg-ink-50 hover:border-ink-300',
-  ghost: 'bg-transparent text-ink-600 hover:bg-ink-100 hover:text-ink-900 border border-transparent',
-  danger: 'bg-surface text-crit-600 border border-ink-200 hover:bg-crit-50 hover:border-crit-100',
+  primary: 'bg-brand-600 text-white hover:bg-brand-700 border border-transparent disabled:bg-brand-300 shadow-[0_8px_22px_-10px_rgba(14,124,123,0.7),inset_0_1px_0_rgba(255,255,255,0.2)]',
+  secondary: 'bg-white/70 text-ink-800 border border-white/80 hover:bg-white hover:border-ink-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]',
+  ghost: 'bg-transparent text-ink-600 hover:bg-white/60 hover:text-ink-900 border border-transparent',
+  danger: 'bg-white/70 text-crit-600 border border-white/80 hover:bg-crit-50 hover:border-crit-100',
 };
 const sizeClass: Record<Size, string> = {
   sm: 'h-8 px-3 text-[13px] gap-1.5 rounded-lg',
@@ -82,8 +82,8 @@ export function PageHeader({ title, description, actions, eyebrow }: { title: Re
   return (
     <div className="flex flex-wrap items-end justify-between gap-4 mb-8">
       <div className="min-w-0">
-        {eyebrow && <div className="text-[12px] font-medium uppercase tracking-[0.12em] text-ink-500 mb-2">{eyebrow}</div>}
-        <h1 className="text-[28px] leading-tight truncate">{title}</h1>
+        {eyebrow && <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-brand-700/80 mb-2">{eyebrow}</div>}
+        <h1 className="text-[30px] leading-tight truncate tracking-tight">{title}</h1>
         {description && <p className="text-ink-500 mt-1.5 max-w-2xl">{description}</p>}
       </div>
       {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
@@ -199,7 +199,7 @@ export function Field({ label, hint, children, className, required }: { label: R
   );
 }
 
-const controlClass = 'w-full h-9.5 rounded-xl border border-ink-200 bg-surface px-3 text-sm text-ink-900 placeholder:text-ink-400 hover:border-ink-300 focus:border-brand-500 transition-colors disabled:bg-ink-50 disabled:text-ink-500';
+const controlClass = 'w-full h-9.5 rounded-xl border border-white/80 bg-white/70 backdrop-blur-sm px-3 text-sm text-ink-900 placeholder:text-ink-400 hover:border-ink-300 focus:border-brand-500 focus:bg-white transition-colors disabled:bg-ink-50/70 disabled:text-ink-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]';
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input({ className, ...rest }, ref) {
   return <input ref={ref} className={clsx(controlClass, rest.type === 'password' && 'font-mono tracking-wide', className)} {...rest} />;
@@ -258,7 +258,7 @@ export function RadioCard({ checked, onChange, title, description, icon, disable
       onClick={onChange}
       className={clsx(
         'text-left rounded-xl border p-4 transition-colors w-full',
-        checked ? 'border-brand-500 bg-brand-50/60 ring-1 ring-brand-500' : 'border-ink-200 hover:border-ink-300 bg-surface',
+        checked ? 'border-brand-500 bg-brand-50/70 ring-1 ring-brand-500 shadow-[0_8px_24px_-16px_rgba(14,124,123,0.55)]' : 'border-white/80 hover:border-ink-300 bg-white/55',
         disabled && 'opacity-50 cursor-not-allowed',
       )}
     >
@@ -369,8 +369,8 @@ export function Modal({ open, onClose, title, description, children, footer, wid
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-ink-950/40 backdrop-blur-[2px]" onClick={onClose} />
-      <div role="dialog" aria-modal className={clsx('relative w-full card p-0 shadow-2xl shadow-ink-950/20', width)}>
+      <div className="absolute inset-0 bg-ink-950/45 backdrop-blur-md" onClick={onClose} />
+      <div role="dialog" aria-modal className={clsx('relative w-full card p-0 shadow-2xl shadow-ink-950/25 max-h-[92vh] overflow-y-auto', width)}>
         <div className="flex items-start justify-between gap-4 px-6 pt-6">
           <div>
             <h2 className="text-lg">{title}</h2>

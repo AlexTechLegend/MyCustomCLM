@@ -39,7 +39,7 @@ export function Certificates() {
   };
 
   const all = useQuery({ queryKey: ['certificates', { profileId, tag, groupId }], queryFn: () => api.certificates({ profileId, tag, groupId, sort: 'expiry' }) });
-  const profiles = useQuery({ queryKey: ['profiles'], queryFn: api.profiles });
+  const profiles = useQuery({ queryKey: ['profiles'], queryFn: () => api.profiles() });
   const tagsMeta = useQuery({ queryKey: ['tags'], queryFn: api.tags });
 
   const filtered = useMemo(() => {

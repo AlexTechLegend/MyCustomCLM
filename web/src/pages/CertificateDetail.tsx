@@ -14,7 +14,7 @@ export function CertificateDetail() {
   const nav = useNavigate();
   const toast = useToast();
   const detail = useQuery({ queryKey: ['certificate', id], queryFn: () => api.certificate(id) });
-  const profiles = useQuery({ queryKey: ['profiles'], queryFn: api.profiles });
+  const profiles = useQuery({ queryKey: ['profiles'], queryFn: () => api.profiles() });
   const [edit, setEdit] = useState(false);
   const [download, setDownload] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -78,6 +78,9 @@ export function CertificateDetail() {
           <>
             <Button variant="ghost" icon={<Pencil className="size-4" />} onClick={() => setEdit(true)}>Edit</Button>
             <Button icon={<Download className="size-4" />} onClick={() => setDownload(true)}>Download</Button>
+            {renewals[0] && (
+              <LinkButton to={`/certificates/${c.id}/renew?renewal=${renewals[0].id}`}>Last receipt</LinkButton>
+            )}
             <LinkButton to={`/certificates/${c.id}/renew`} variant="primary" icon={<RefreshCw className="size-4" />}>Renew</LinkButton>
           </>
         }
@@ -159,7 +162,7 @@ export function CertificateDetail() {
           </Card>
 
           <Card>
-            <CardHeader title="Renewal history" description="Each renewal replaces the material in place; identity, profiles and tags are kept." />
+            <CardHeader title="Renewal history" description="Reopen the same receipt you saw when the renewal succeeded — downloads, deploy paths, and the OpenSSL trail." />
             {renewals.length === 0 ? (
               <p className="text-[13px] text-ink-500">Not renewed through Vigil yet.</p>
             ) : (
@@ -178,8 +181,10 @@ export function CertificateDetail() {
                         {r.outputs.length > 0 && <> · {r.outputs.length} file{r.outputs.length === 1 ? '' : 's'}</>}
                       </div>
                     </div>
-                    <Badge tone={r.status === 'completed' ? 'ok' : r.status === 'failed' ? 'crit' : 'warn'}>{r.status === 'pending-csr' ? 'Awaiting signed cert' : r.status}</Badge>
-                    <LinkButton to={`/certificates/${c.id}/renew?renewal=${r.id}`} size="sm" variant="ghost">View</LinkButton>
+                    <Badge tone={r.status === 'completed' ? 'ok' : r.status === 'failed' ? 'crit' : 'warn'}>{r.status === 'pending-csr' ? 'Awaiting signed cert' : r.status === 'completed' ? 'Complete' : r.status}</Badge>
+                    <LinkButton to={`/certificates/${c.id}/renew?renewal=${r.id}`} size="sm" variant="secondary">
+                      Open receipt
+                    </LinkButton>
                   </li>
                 ))}
               </ul>

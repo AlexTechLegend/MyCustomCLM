@@ -1,14 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronRight, FileSearch, FolderOutput, GripVertical, Plus, Sparkles, Trash2, Wrench } from 'lucide-react';
+import { ChevronRight, Eye, FileSearch, FolderOutput, GripVertical, Plus, Sparkles, Trash2, Wrench } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { FileDrop } from '@/components/FileDrop';
+import { FormatPreviewPane } from '@/components/FormatPreview';
 import { useToast } from '@/components/Toast';
-import { Badge, Button, Card, CardHeader, Checkbox, ErrorBox, Field, Input, LinkButton, Loading, Modal, PageHeader, Select, StatusBadge, Tabs, Textarea } from '@/components/ui';
+import { Badge, Button, Card, CardHeader, Checkbox, ErrorBox, Field, Input, LinkButton, Loading, Modal, PageHeader, RadioCard, Select, StatusBadge, Tabs, Textarea } from '@/components/ui';
 import { api } from '@/lib/api';
 import { FORMAT_LABELS, formatIsPem, formatNeedsKey } from '@/lib/format';
 import { FORMAT_CATEGORIES, FORMAT_PRESETS, needsPassword, specFromPreset } from '@/lib/formatPresets';
-import type { DetectedFormat, OutputFormat, OutputSpec, Profile } from '@/types';
+import type { DetectedFormat, OutputFormat, OutputSpec, Profile, ProfileScope } from '@/types';
 
 const TOKENS = ['{cn}', '{cn_safe}', '{date}', '{year}', '{serial}', '{profile}'];
 
@@ -24,11 +25,16 @@ export function ProfileEditor() {
   const toast = useToast();
   const existing = useQuery({ queryKey: ['profile', id], queryFn: () => api.profile(id!), enabled: !isNew });
 
-  const [form, setForm] = useState<Pick<Profile, 'name' | 'description' | 'destinationPath' | 'outputs'>>({
+  const certs = useQuery({ queryKey: ['certificates'], queryFn: () => api.certificates({}) });
+  const tags = useQuery({ queryKey: ['tags'], queryFn: api.tags });
+  const [form, setForm] = useState<Pick<Profile, 'name' | 'description' | 'destinationPath' | 'outputs' | 'scope' | 'serverTags' | 'certificateIds'>>({
     name: '',
     description: '',
     destinationPath: '',
     outputs: [],
+    scope: 'general',
+    serverTags: [],
+    certificateIds: [],
   });
   const [loaded, setLoaded] = useState(false);
   const [builderOpen, setBuilderOpen] = useState(false);
@@ -38,7 +44,15 @@ export function ProfileEditor() {
   useEffect(() => {
     if (existing.data && !loaded) {
       const p = existing.data.profile;
-      setForm({ name: p.name, description: p.description, destinationPath: p.destinationPath, outputs: p.outputs });
+      setForm({
+        name: p.name,
+        description: p.description,
+        destinationPath: p.destinationPath,
+        outputs: p.outputs,
+        scope: p.scope ?? 'general',
+        serverTags: p.serverTags ?? [],
+        certificateIds: p.certificateIds ?? [],
+      });
       setLoaded(true);
     }
   }, [existing.data, loaded]);
@@ -128,12 +142,84 @@ export function ProfileEditor() {
               <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="What consumes these files and any handling notes." className="min-h-16" />
             </Field>
             {form.destinationPath && (
-              <div className="mt-4 flex items-start gap-2 rounded-xl bg-brand-50 border border-brand-100 px-3.5 py-3 text-[13px] text-brand-800">
+              <div className="mt-4 flex items-start gap-2 rounded-xl bg-brand-50/80 border border-brand-100 px-3.5 py-3 text-[13px] text-brand-800">
                 <FolderOutput className="size-4 mt-0.5 shrink-0" />
                 <span>
                   On renew, each output below is rendered and copied to <span className="font-mono">{form.destinationPath}</span>
                   {form.destinationPath.includes('{') ? ' (tokens expanded per certificate).' : '.'}
                 </span>
+              </div>
+            )}
+          </Card>
+
+          <Card>
+            <CardHeader title="Availability" description="General profiles are offered on every renewal. Specialized profiles only appear for the servers or certificates you assign." />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <RadioCard
+                checked={form.scope === 'general'}
+                onChange={() => setForm({ ...form, scope: 'general' })}
+                title="General use"
+                description="Available for any certificate — the everyday profile."
+              />
+              <RadioCard
+                checked={form.scope === 'specialized'}
+                onChange={() => setForm({ ...form, scope: 'specialized' as ProfileScope })}
+                title="Specialized"
+                description="Only for certificates that match the tags or assignments below."
+              />
+            </div>
+            {form.scope === 'specialized' && (
+              <div className="mt-5 space-y-5">
+                <Field label="Server tags" hint="Any certificate carrying one of these tags can use this profile.">
+                  <div className="flex flex-wrap gap-1.5">
+                    {(tags.data?.tags ?? []).map((t) => {
+                      const on = form.serverTags.includes(t.tag);
+                      return (
+                        <button
+                          key={t.tag}
+                          type="button"
+                          onClick={() =>
+                            setForm({
+                              ...form,
+                              serverTags: on ? form.serverTags.filter((x) => x !== t.tag) : [...form.serverTags, t.tag],
+                            })
+                          }
+                          className={`h-8 rounded-lg px-2.5 text-[13px] font-medium border transition-colors ${on ? 'bg-brand-600 text-white border-brand-600' : 'bg-white/60 text-ink-700 border-ink-200 hover:border-ink-300'}`}
+                        >
+                          {t.tag}
+                        </button>
+                      );
+                    })}
+                    {(tags.data?.tags ?? []).length === 0 && <span className="text-[13px] text-ink-500">No tags in the estate yet — assign specific certificates below.</span>}
+                  </div>
+                </Field>
+                <Field label="Specific certificates" hint="Optional extra assignments on top of tag matching.">
+                  <div className="max-h-[220px] overflow-y-auto rounded-xl border border-ink-200 divide-y divide-ink-100">
+                    {(certs.data ?? []).map((c) => {
+                      const on = form.certificateIds.includes(c.id);
+                      return (
+                        <label key={c.id} className="flex items-center gap-3 px-3 py-2 hover:bg-ink-50/70 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            className="size-4 accent-brand-600"
+                            checked={on}
+                            onChange={(e) =>
+                              setForm({
+                                ...form,
+                                certificateIds: e.target.checked ? [...form.certificateIds, c.id] : form.certificateIds.filter((x) => x !== c.id),
+                              })
+                            }
+                          />
+                          <span className="flex-1 min-w-0">
+                            <span className="block text-sm text-ink-900 truncate">{c.name}</span>
+                            <span className="block text-[11px] text-ink-500 truncate">{c.tags.join(', ') || 'No tags'}</span>
+                          </span>
+                          <StatusBadge status={c.status} />
+                        </label>
+                      );
+                    })}
+                  </div>
+                </Field>
               </div>
             )}
           </Card>
@@ -223,6 +309,7 @@ export function ProfileEditor() {
 
       {builderOpen && (
         <BuilderModal
+          destinationPath={form.destinationPath}
           onClose={() => setBuilderOpen(false)}
           onAdd={(specs) => {
             specs.forEach(addSpec);
@@ -282,8 +369,9 @@ function SpecEditor({
   const pwd = needsPassword(spec.format);
   const chainish = ['pem-fullchain', 'pem-chain', 'pem-bundle', 'pkcs7-pem', 'pkcs7-der', 'pkcs12'].includes(spec.format);
   const keyish = ['pem-key', 'pem-key-encrypted', 'pem-bundle'].includes(spec.format);
+  const [showPreview, setShowPreview] = useState(false);
   return (
-    <div className="rounded-xl border border-ink-200 p-4">
+    <div className="rounded-xl border border-ink-200/80 bg-white/40 p-4">
       <div className="flex items-start gap-3">
         <div className="flex flex-col items-center gap-0.5 text-ink-300 pt-1">
           <button type="button" className="hover:text-ink-600 disabled:opacity-30" disabled={index === 0} onClick={() => onMove(-1)} aria-label="Move up">
@@ -353,31 +441,45 @@ function SpecEditor({
               )}
               {needsKey && <span className="text-ink-400">· requires private key</span>}
             </div>
-            <Button size="sm" variant="ghost" icon={<Trash2 className="size-3.5" />} onClick={onRemove}>
-              Remove
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button size="sm" variant="ghost" icon={<Eye className="size-3.5" />} onClick={() => setShowPreview((v) => !v)}>
+                {showPreview ? 'Hide preview' : 'Preview'}
+              </Button>
+              <Button size="sm" variant="ghost" icon={<Trash2 className="size-3.5" />} onClick={onRemove}>
+                Remove
+              </Button>
+            </div>
           </div>
         </div>
       </div>
+      {showPreview && (
+        <div className="mt-4 pt-4 border-t border-ink-100">
+          <FormatPreviewPane spec={spec} destinationPath="{cn_safe}" />
+        </div>
+      )}
     </div>
   );
 }
 
 type FormatPresetCategory = (typeof FORMAT_CATEGORIES)[number]['id'];
 
-function BuilderModal({ onClose, onAdd }: { onClose: () => void; onAdd: (specs: OutputSpec[]) => void }) {
+function BuilderModal({ onClose, onAdd, destinationPath }: { onClose: () => void; onAdd: (specs: OutputSpec[]) => void; destinationPath: string }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [category, setCategory] = useState<'all' | FormatPresetCategory>('all');
+  const [focusId, setFocusId] = useState<string>(FORMAT_PRESETS[0].id);
   const presets = FORMAT_PRESETS.filter((p) => category === 'all' || p.category === category);
   const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  const focused = FORMAT_PRESETS.find((p) => p.id === focusId) ?? FORMAT_PRESETS[0];
+  const selectedPresets = FORMAT_PRESETS.filter((p) => selected.includes(p.id));
+  const folderFiles = (selectedPresets.length ? selectedPresets : [focused]).map((p) => ({ filename: p.defaults.filename, label: p.title }));
 
   return (
     <Modal
       open
       onClose={onClose}
       title="Format builder"
-      description="Select every form you want this profile to produce. You can fine-tune filenames, passwords and line endings after adding."
-      width="max-w-3xl"
+      description="Select every form this profile should produce. Preview how it looks in the destination folder and what the file contains."
+      width="max-w-5xl"
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
@@ -387,14 +489,7 @@ function BuilderModal({ onClose, onAdd }: { onClose: () => void; onAdd: (specs: 
             variant="primary"
             disabled={!selected.length}
             icon={<Plus className="size-4" />}
-            onClick={() =>
-              onAdd(
-                FORMAT_PRESETS.filter((p) => selected.includes(p.id)).map((p) => {
-                  const spec = specFromPreset(p, newId('out'));
-                  return spec;
-                }),
-              )
-            }
+            onClick={() => onAdd(selectedPresets.map((p) => specFromPreset(p, newId('out'))))}
           >
             Add {selected.length || ''} selected
           </Button>
@@ -406,31 +501,47 @@ function BuilderModal({ onClose, onAdd }: { onClose: () => void; onAdd: (specs: 
         value={category}
         onChange={setCategory}
       />
-      <ul className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[420px] overflow-y-auto pr-1">
-        {presets.map((p) => {
-          const on = selected.includes(p.id);
-          return (
-            <li key={p.id}>
-              <button
-                type="button"
-                onClick={() => toggle(p.id)}
-                className={`w-full text-left rounded-xl border p-3.5 transition-colors ${on ? 'border-brand-500 bg-brand-50/60 ring-1 ring-brand-500' : 'border-ink-200 hover:border-ink-300 bg-surface'}`}
-              >
-                <div className="flex items-start gap-3">
-                  <span className={`mt-0.5 size-4 rounded border flex items-center justify-center shrink-0 ${on ? 'bg-brand-600 border-brand-600 text-white' : 'border-ink-300'}`}>
-                    {on && <span className="text-[10px] leading-none">✓</span>}
-                  </span>
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium text-ink-950">{p.title}</div>
-                    <div className="text-[12px] text-ink-500 mt-0.5 leading-5">{p.description}</div>
-                    <div className="mt-1.5 font-mono text-[11px] text-ink-400">{p.defaults.filename}</div>
+      <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <ul className="space-y-2 max-h-[480px] overflow-y-auto pr-1">
+          {presets.map((p) => {
+            const on = selected.includes(p.id);
+            const focusedOn = focusId === p.id;
+            return (
+              <li key={p.id}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    toggle(p.id);
+                    setFocusId(p.id);
+                  }}
+                  onMouseEnter={() => setFocusId(p.id)}
+                  className={`w-full text-left rounded-xl border p-3.5 transition-colors ${
+                    on
+                      ? 'border-brand-500 bg-brand-50/70 ring-1 ring-brand-500'
+                      : focusedOn
+                        ? 'border-ink-300 bg-white/80'
+                        : 'border-ink-200 hover:border-ink-300 bg-white/50'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <span className={`mt-0.5 size-4 rounded border flex items-center justify-center shrink-0 ${on ? 'bg-brand-600 border-brand-600 text-white' : 'border-ink-300'}`}>
+                      {on && <span className="text-[10px] leading-none">✓</span>}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-ink-950">{p.title}</div>
+                      <div className="text-[12px] text-ink-500 mt-0.5 leading-5">{p.description}</div>
+                      <div className="mt-1.5 font-mono text-[11px] text-ink-400">{p.defaults.filename}</div>
+                    </div>
                   </div>
-                </div>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        <div className="lg:sticky lg:top-0">
+          <FormatPreviewPane spec={focused.defaults} destinationPath={destinationPath || '{cn_safe}'} siblings={folderFiles} />
+        </div>
+      </div>
     </Modal>
   );
 }

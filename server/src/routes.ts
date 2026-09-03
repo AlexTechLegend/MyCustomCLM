@@ -30,7 +30,8 @@ import {
 } from './services/certificates.js';
 import { dashboard } from './services/dashboard.js';
 import { listEvents, recordEvent, timeSavedSummary } from './services/events.js';
-import { createProfile, deleteProfile, getProfile, listProfiles, updateProfile } from './services/profiles.js';
+import { createIdentityTemplate, deleteIdentityTemplate, getIdentityTemplate, listIdentityTemplates, updateIdentityTemplate } from './services/identities.js';
+import { createProfile, deleteProfile, getProfile, listProfiles, profileAppliesTo, updateProfile } from './services/profiles.js';
 import { completeCsrRenewal, getRenewal, listRenewals, renewalOutputFile, renewalZipEntries, startRenewal } from './services/renewals.js';
 import { getSettings, saveSettings } from './services/settings.js';
 import { createTagGroup, deleteTagGroup, getTagGroup, listDistinctTags, listTagGroups, updateTagGroup } from './services/tags.js';
@@ -219,6 +220,15 @@ api.post(
       validityDays: Number(req.body.validityDays) || getSettings().defaultValidityDays,
       profileIds: list(req.body.profileIds),
       deploy: req.body.deploy === true || req.body.deploy === 'true',
+      commonName: str(req.body.commonName),
+      sans: req.body.sans !== undefined ? list(req.body.sans) : undefined,
+      country: str(req.body.country),
+      state: str(req.body.state),
+      locality: str(req.body.locality),
+      organisation: str(req.body.organisation),
+      organisationalUnit: str(req.body.organisationalUnit),
+      email: str(req.body.email),
+      identityTemplateId: str(req.body.identityTemplateId),
     });
     res.status(201).json(renewal);
   }),
@@ -283,7 +293,17 @@ api.get(
 
 // Profiles -----------------------------------------------------------------
 
-api.get('/profiles', wrap((_req, res) => res.json(listProfiles())));
+api.get(
+  '/profiles',
+  wrap((req, res) => {
+    const all = listProfiles();
+    const certificateId = str(req.query.certificateId);
+    if (!certificateId) return res.json(all);
+    const cert = getCertificate(certificateId);
+    if (!cert) return res.json(all);
+    res.json(all.map((p) => ({ ...p, applicable: profileAppliesTo(p, cert) })));
+  }),
+);
 
 api.post(
   '/profiles/analyze',
@@ -343,6 +363,28 @@ api.put(
   }),
 );
 api.delete('/tag-groups/:id', wrap((req, res) => res.status(deleteTagGroup(req.params.id as string) ? 204 : 404).end()));
+
+// Identity templates -------------------------------------------------------
+
+api.get('/identities', wrap((_req, res) => res.json(listIdentityTemplates())));
+api.post('/identities', wrap((req, res) => res.status(201).json(createIdentityTemplate(req.body))));
+api.get(
+  '/identities/:id',
+  wrap((req, res) => {
+    const t = getIdentityTemplate(req.params.id as string);
+    if (!t) return res.status(404).json({ error: 'Identity template not found' });
+    res.json(t);
+  }),
+);
+api.put(
+  '/identities/:id',
+  wrap((req, res) => {
+    const t = updateIdentityTemplate(req.params.id as string, req.body);
+    if (!t) return res.status(404).json({ error: 'Identity template not found' });
+    res.json(t);
+  }),
+);
+api.delete('/identities/:id', wrap((req, res) => res.status(deleteIdentityTemplate(req.params.id as string) ? 204 : 404).end()));
 
 // Activity -----------------------------------------------------------------
 

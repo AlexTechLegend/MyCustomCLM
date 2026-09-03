@@ -1,4 +1,4 @@
-import type { AutomationEvent, Certificate, DetectedFormat, OutputSpec, Profile, Renewal, Settings, TagGroup } from '@/types';
+import type { AutomationEvent, Certificate, DetectedFormat, IdentityTemplate, OutputSpec, Profile, Renewal, Settings, TagGroup } from '@/types';
 
 export class ApiError extends Error {
   constructor(message: string, public status: number, public command?: string, public stderr?: string) {
@@ -95,12 +95,34 @@ export const api = {
     return `/api/certificates/${id}/download?${qs}`;
   },
 
-  renew: (id: string, body: { method: string; keyMode: string; validityDays: number; profileIds: string[]; deploy: boolean }) => request<Renewal>(`/api/certificates/${id}/renew`, json('POST', body)),
+  renew: (
+    id: string,
+    body: {
+      method: string;
+      keyMode: string;
+      validityDays: number;
+      profileIds: string[];
+      deploy: boolean;
+      commonName?: string;
+      sans?: string[];
+      country?: string;
+      state?: string;
+      locality?: string;
+      organisation?: string;
+      organisationalUnit?: string;
+      email?: string;
+      identityTemplateId?: string;
+    },
+  ) => request<Renewal>(`/api/certificates/${id}/renew`, json('POST', body)),
   renewal: (id: string) => request<Renewal>(`/api/renewals/${id}`),
   renewals: () => request<Renewal[]>('/api/renewals'),
   completeRenewal: (id: string, form: FormData) => request<Renewal>(`/api/renewals/${id}/complete`, { method: 'POST', body: form }),
 
-  profiles: () => request<Profile[]>('/api/profiles'),
+  profiles: (certificateId?: string) => request<Profile[]>(`/api/profiles${certificateId ? `?certificateId=${encodeURIComponent(certificateId)}` : ''}`),
+  identities: () => request<IdentityTemplate[]>('/api/identities'),
+  createIdentity: (t: Partial<IdentityTemplate>) => request<IdentityTemplate>('/api/identities', json('POST', t)),
+  updateIdentity: (id: string, t: Partial<IdentityTemplate>) => request<IdentityTemplate>(`/api/identities/${id}`, json('PUT', t)),
+  deleteIdentity: (id: string) => request<void>(`/api/identities/${id}`, { method: 'DELETE' }),
   profile: (id: string) => request<{ profile: Profile; certificates: Certificate[] }>(`/api/profiles/${id}`),
   analyze: (form: FormData) => request<{ detected: DetectedFormat; spec: OutputSpec }>('/api/profiles/analyze', { method: 'POST', body: form }),
   createProfile: (p: Partial<Profile>) => request<Profile>('/api/profiles', json('POST', p)),

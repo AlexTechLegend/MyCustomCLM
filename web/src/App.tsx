@@ -9,6 +9,7 @@ import { ProfileEditor } from './pages/ProfileEditor';
 import { Profiles } from './pages/Profiles';
 import { Renew } from './pages/Renew';
 import { Settings } from './pages/Settings';
+import { Identities } from './pages/Identities';
 import { Tags } from './pages/Tags';
 
 export default function App() {
@@ -23,6 +24,7 @@ export default function App() {
         <Route path="profiles" element={<Profiles />} />
         <Route path="profiles/new" element={<ProfileEditor />} />
         <Route path="profiles/:id" element={<ProfileEditor />} />
+        <Route path="identities" element={<Identities />} />
         <Route path="tags" element={<Tags />} />
         <Route path="activity" element={<Activity />} />
         <Route path="settings" element={<Settings />} />

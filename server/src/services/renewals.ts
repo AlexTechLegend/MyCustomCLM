@@ -7,7 +7,9 @@ import {
   generateKey,
   keyMatchesCert,
   loadMaterial,
+  mergeSubjectComponents,
   newLog,
+  normaliseSans,
   parseCertificate,
   readCaCert,
   renderDestinationPath,
@@ -18,11 +20,13 @@ import {
   type CommandLog,
   type Material,
   type ParsedCert,
+  type SubjectOverrides,
   type UploadedFile,
 } from '../openssl.js';
 import type { Certificate, KeyMode, Profile, Renewal, RenewalMethod, RenewalOutput, RenewalStatus } from '../types.js';
 import { getCertificate, readVault, replaceCertificateMaterial } from './certificates.js';
 import { recordEvent } from './events.js';
+import { getIdentityTemplate } from './identities.js';
 import { getProfile } from './profiles.js';
 import { getSettings } from './settings.js';
 
@@ -81,12 +85,14 @@ export function listRenewals(certificateId?: string, limit = 100): Renewal[] {
   return rows.map((r) => mapRow(r));
 }
 
-export interface StartRenewalInput {
+export interface StartRenewalInput extends SubjectOverrides {
   method: RenewalMethod;
   keyMode: KeyMode;
   validityDays: number;
   profileIds: string[];
   deploy: boolean;
+  sans?: string[];
+  identityTemplateId?: string;
 }
 
 function renewalDir(id: string) {
@@ -110,7 +116,18 @@ export async function startRenewal(certId: string, input: StartRenewalInput): Pr
   }
 
   const parsedLeaf = await parseCertificate(vault.certPem);
-  const csrPem = await createCsr(keyPem, parsedLeaf.subjectComponents, parsedLeaf.sans, log);
+  const template = input.identityTemplateId ? getIdentityTemplate(input.identityTemplateId) : null;
+  const subject = mergeSubjectComponents(parsedLeaf.subjectComponents, {
+    country: input.country ?? template?.country,
+    state: input.state ?? template?.state,
+    locality: input.locality ?? template?.locality,
+    organisation: input.organisation ?? template?.organisation,
+    organisationalUnit: input.organisationalUnit ?? template?.organisationalUnit,
+    email: input.email ?? template?.email,
+    commonName: input.commonName,
+  });
+  const sans = normaliseSans(input.sans ?? parsedLeaf.sans, input.commonName ?? parsedLeaf.commonName);
+  const csrPem = await createCsr(keyPem, subject, sans, log);
 
   const id = newId('rnw');
   const now = nowIso();
@@ -150,7 +167,7 @@ export async function startRenewal(certId: string, input: StartRenewalInput): Pr
       certificateName: cert.name,
       renewalId: id,
       title: `Generated CSR for ${cert.name}`,
-      detail: `${input.keyMode === 'reuse' ? 'Existing key reused' : 'New ' + input.keyMode.toUpperCase().replace('-', ' ') + ' key'}; ${parsedLeaf.sans.length} SAN${parsedLeaf.sans.length === 1 ? '' : 's'} carried over`,
+      detail: `${input.keyMode === 'reuse' ? 'Existing key reused' : 'New ' + input.keyMode.toUpperCase().replace('-', ' ') + ' key'}; CN ${input.commonName?.trim() || parsedLeaf.commonName}; ${sans.length} SAN${sans.length === 1 ? '' : 's'}`,
       commands: log.commands,
       minutesSaved: settings.baselines.csr,
     });

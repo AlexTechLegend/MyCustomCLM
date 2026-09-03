@@ -80,6 +80,8 @@ export interface DetectedFormat {
   sourceFilename: string;
 }
 
+export type ProfileScope = 'general' | 'specialized';
+
 export interface Profile {
   id: string;
   name: string;
@@ -87,9 +89,33 @@ export interface Profile {
   /** Absolute / UNC directory. Tokens {cn} {cn_safe} {profile} {year} {date} allowed. */
   destinationPath: string;
   outputs: OutputSpec[];
+  /** general = available for any certificate; specialized = only for matched certs/servers. */
+  scope: ProfileScope;
+  /** When specialized: match certificates that have any of these tags (e.g. server roles). */
+  serverTags: string[];
+  /** When specialized: explicitly assigned certificate ids. */
+  certificateIds: string[];
   createdAt: string;
   updatedAt: string;
   certificateCount?: number;
+}
+
+/** Reusable subject / key defaults applied when issuing or renewing. */
+export interface IdentityTemplate {
+  id: string;
+  name: string;
+  description: string;
+  country: string;
+  state: string;
+  locality: string;
+  organisation: string;
+  organisationalUnit: string;
+  email: string;
+  /** Default key mode suggested on renew (not forced). */
+  defaultKeyMode: KeyMode;
+  defaultValidityDays: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 /** A named collection of tags used for bulk filtering. */

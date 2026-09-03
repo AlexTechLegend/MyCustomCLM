@@ -11,7 +11,7 @@ import type { Certificate } from '@/types';
 export function ImportCertificate() {
   const qc = useQueryClient();
   const toast = useToast();
-  const profiles = useQuery({ queryKey: ['profiles'], queryFn: api.profiles });
+  const profiles = useQuery({ queryKey: ['profiles'], queryFn: () => api.profiles() });
 
   const [files, setFiles] = useState<File[]>([]);
   const [password, setPassword] = useState('');

@@ -193,6 +193,25 @@ function migrate(d: Db) {
       description TEXT NOT NULL DEFAULT '',
       destination_path TEXT NOT NULL DEFAULT '',
       outputs TEXT NOT NULL DEFAULT '[]',
+      scope TEXT NOT NULL DEFAULT 'general',
+      server_tags TEXT NOT NULL DEFAULT '[]',
+      certificate_ids TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS identity_templates (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      country TEXT NOT NULL DEFAULT '',
+      state TEXT NOT NULL DEFAULT '',
+      locality TEXT NOT NULL DEFAULT '',
+      organisation TEXT NOT NULL DEFAULT '',
+      organisational_unit TEXT NOT NULL DEFAULT '',
+      email TEXT NOT NULL DEFAULT '',
+      default_key_mode TEXT NOT NULL DEFAULT 'rsa-2048',
+      default_validity_days INTEGER NOT NULL DEFAULT 397,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -248,6 +267,9 @@ function migrate(d: Db) {
   `);
   // Additive migrations for databases created before these columns existed.
   ensureColumn(d, 'certificates', 'destination_override', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(d, 'profiles', 'scope', "TEXT NOT NULL DEFAULT 'general'");
+  ensureColumn(d, 'profiles', 'server_tags', "TEXT NOT NULL DEFAULT '[]'");
+  ensureColumn(d, 'profiles', 'certificate_ids', "TEXT NOT NULL DEFAULT '[]'");
 }
 
 function ensureColumn(d: Db, table: string, column: string, ddl: string) {

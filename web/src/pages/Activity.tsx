@@ -64,11 +64,19 @@ export function Activity() {
                     <div className="text-sm text-ink-950 truncate">{e.title}</div>
                     <div className="text-[12px] text-ink-500 truncate">{e.detail}</div>
                   </div>
-                  {e.certificateId && (
+                  {e.renewalId && e.certificateId ? (
+                    <Link
+                      to={`/certificates/${e.certificateId}/renew?renewal=${e.renewalId}`}
+                      onClick={(ev) => ev.stopPropagation()}
+                      className="text-[12px] text-brand-700 hover:underline hidden md:block truncate max-w-[200px]"
+                    >
+                      Open receipt
+                    </Link>
+                  ) : e.certificateId ? (
                     <Link to={`/certificates/${e.certificateId}`} onClick={(ev) => ev.stopPropagation()} className="text-[12px] text-brand-700 hover:underline hidden md:block truncate max-w-[180px]">
                       {e.certificateName}
                     </Link>
-                  )}
+                  ) : null}
                   <div className="text-right shrink-0 w-32">
                     <div className="text-sm font-medium text-ink-900 tnum">+{humanMinutes(e.minutesSaved)}</div>
                     <div className="text-[11px] text-ink-500 tnum">{formatDateTime(e.createdAt)}</div>

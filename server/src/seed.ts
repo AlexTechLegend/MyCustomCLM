@@ -11,6 +11,7 @@ import { db, dbBackend, newId, nowIso } from './db.js';
 import { createCa, createCsr, generateKey, newLog, parseCertificate, readCaCert, signWithCa, selfSign, type Material } from './openssl.js';
 import { insertCertificate } from './services/certificates.js';
 import { recordEvent } from './services/events.js';
+import { createIdentityTemplate } from './services/identities.js';
 import { createProfile } from './services/profiles.js';
 import { saveSettings } from './services/settings.js';
 import { createTagGroup } from './services/tags.js';
@@ -113,12 +114,39 @@ async function main() {
   createTagGroup({ name: 'Internal infrastructure', description: 'Anything on the corporate network.', tags: ['internal', 'ci', 'database', 'monitoring'] });
   createTagGroup({ name: 'Identity', description: 'SSO, LDAP and VPN.', tags: ['identity', 'network'] });
 
+  createIdentityTemplate({
+    name: 'Contoso Ltd — Production',
+    description: 'Public and internal production certificates. RSA 2048, 397-day public-CA window.',
+    country: 'GB',
+    state: 'Greater London',
+    locality: 'London',
+    organisation: 'Contoso Ltd',
+    organisationalUnit: 'Infrastructure',
+    email: 'pki@contoso.com',
+    defaultKeyMode: 'rsa-2048',
+    defaultValidityDays: 397,
+  });
+  createIdentityTemplate({
+    name: 'Contoso Engineering — Lab',
+    description: 'Self-signed and internal-CA lab identities. EC P-256, 90 days.',
+    country: 'GB',
+    state: 'Greater London',
+    locality: 'London',
+    organisation: 'Contoso Engineering',
+    organisationalUnit: 'Platform',
+    email: 'lab@contoso.dev',
+    defaultKeyMode: 'ec-p256',
+    defaultValidityDays: 90,
+  });
+
   const destRoot = path.join(os.tmpdir(), 'vigil-demo');
   const profiles = {
     iis: createProfile({
       name: 'IIS – Web Farm',
       description: 'Full-chain .cer (CRLF, leaf + intermediate + root) for the bindings, decrypted private.key for the automation share, and a PFX for direct import.',
       destinationPath: path.join(destRoot, 'webfarm', '{cn_safe}'),
+      scope: 'specialized',
+      serverTags: ['iis', 'prod', 'web'],
       outputs: [
         { label: 'Full chain certificate (.cer, CRLF)', filename: 'fullchain.cer', format: 'pem-fullchain', lineEnding: 'crlf', includeRoot: true },
         { label: 'Decrypted private key (PKCS#8)', filename: 'private.key', format: 'pem-key', lineEnding: 'lf', keyEncoding: 'pkcs8' },
@@ -127,8 +155,9 @@ async function main() {
     } as never),
     nginx: createProfile({
       name: 'Linux – Nginx',
-      description: 'Standard fullchain.pem / privkey.pem pair, LF endings.',
+      description: 'Standard fullchain.pem / privkey.pem pair, LF endings. Available for any certificate.',
       destinationPath: path.join(destRoot, 'nginx'),
+      scope: 'general',
       outputs: [
         { label: 'fullchain.pem', filename: 'fullchain.pem', format: 'pem-fullchain', lineEnding: 'lf', includeRoot: false },
         { label: 'privkey.pem (PKCS#8)', filename: 'privkey.pem', format: 'pem-key', lineEnding: 'lf', keyEncoding: 'pkcs8' },
@@ -138,6 +167,8 @@ async function main() {
       name: 'Appliances – DER + P7B',
       description: 'Binary DER certificate and a PKCS#7 chain bundle for network appliances and Java keystores.',
       destinationPath: '',
+      scope: 'specialized',
+      serverTags: ['network', 'database', 'identity'],
       outputs: [
         { label: 'DER certificate', filename: '{cn_safe}.cer', format: 'der-cert' },
         { label: 'PKCS#7 chain (DER)', filename: '{cn_safe}-chain.p7b', format: 'pkcs7-der', includeRoot: true },
@@ -207,21 +238,50 @@ async function main() {
     }
   }
 
-  // A few historical renewals so detail pages have history.
+  // A few historical renewals so detail pages have a receipt to reopen.
   const hist = db().prepare(
     `INSERT INTO renewals (id, certificate_id, method, status, key_mode, validity_days, csr_pem, previous_not_after, new_not_after, profile_ids, deploy, outputs, commands, minutes_saved, error, created_at, completed_at)
-     VALUES (?, ?, ?, 'completed', ?, ?, NULL, ?, ?, ?, 1, '[]', ?, ?, NULL, ?, ?)`,
+     VALUES (?, ?, ?, 'completed', ?, ?, NULL, ?, ?, ?, 1, ?, ?, ?, NULL, ?, ?)`,
   );
   for (const c of ESTATE.filter((c) => c.issuer === 'internal' && c.issuedDaysAgo > 100).slice(0, 4)) {
     const rec = certIds.find((x) => x.name === c.cn)!;
     const when = new Date(Date.now() - c.issuedDaysAgo * DAY);
     const prev = new Date(when.getTime() - 3 * DAY).toISOString();
     const next = new Date(Date.now() + c.expiresInDays * DAY).toISOString();
-    hist.run(
-      newId('rnw'), rec.id, 'internal-ca', 'rsa-2048', 365, prev, next, JSON.stringify(c.profiles.map((p) => profiles[p as keyof typeof profiles].id)),
-      JSON.stringify(['openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out key.pem', 'openssl req -new -key key.pem -out req.csr -subj …', 'openssl ca -config ca.cnf -batch -notext -in req.csr -out cert.pem -days 365']),
-      baselines.renewal + baselines.conversion * 2 + baselines.deployment, when.toISOString(), when.toISOString(),
+    const rid = newId('rnw');
+    const usedProfiles = c.profiles.map((p) => profiles[p as keyof typeof profiles]);
+    const outputs = usedProfiles.flatMap((p, pi) =>
+      p.outputs.map((o, oi) => ({
+        index: pi * 10 + oi,
+        profileId: p.id,
+        profileName: p.name,
+        specId: o.id,
+        label: o.label,
+        filename: o.filename.replace('{cn_safe}', c.cn.replace(/[^A-Za-z0-9._-]+/g, '_')),
+        format: o.format,
+        size: 0,
+        stagedPath: '',
+        deployedTo: p.destinationPath ? path.join(p.destinationPath.replace('{cn_safe}', c.cn.replace(/[^A-Za-z0-9._-]+/g, '_')), o.filename) : null,
+        deployStatus: p.destinationPath ? 'deployed' : 'skipped',
+        deployError: null,
+      })),
     );
+    hist.run(
+      rid, rec.id, 'internal-ca', 'rsa-2048', 365, prev, next, JSON.stringify(usedProfiles.map((p) => p.id)),
+      JSON.stringify(outputs),
+      JSON.stringify(['openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out key.pem', 'openssl req -new -key key.pem -out req.csr -subj …', 'openssl ca -config ca.cnf -batch -notext -in req.csr -out cert.pem -days 365']),
+      baselines.renewal + baselines.conversion * outputs.length + baselines.deployment, when.toISOString(), when.toISOString(),
+    );
+    recordEvent({
+      type: 'renewal',
+      certificateId: rec.id,
+      certificateName: rec.name,
+      renewalId: rid,
+      title: `Renewed ${rec.name}`,
+      detail: 'Internal CA, new RSA 2048 key',
+      minutesSaved: baselines.renewal,
+      createdAt: when.toISOString(),
+    });
   }
 
   await fs.rm(enterpriseDir, { recursive: true, force: true });
