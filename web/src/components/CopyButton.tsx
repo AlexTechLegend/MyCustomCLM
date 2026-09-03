@@ -54,14 +54,14 @@ export function CopyButton({
       type="button"
       onClick={onCopy}
       className={clsx(
-        'inline-flex items-center gap-1 rounded-lg text-ink-500 hover:text-ink-900 hover:bg-ink-100 transition-colors',
+        'inline-flex items-center gap-1 rounded-lg text-text-soft hover:text-text hover:bg-surface transition-colors',
         size === 'sm' ? 'p-1' : 'px-2 py-1 text-[13px]',
         className,
       )}
       aria-label={copied ? 'Copied' : label}
       title={copied ? 'Copied' : label}
     >
-      {copied ? <Check className="size-3.5 text-ok-600" /> : <Copy className="size-3.5" />}
+      {copied ? <Check className="size-3.5 text-ok-fg" /> : <Copy className="size-3.5" />}
       {size === 'md' && <span>{copied ? 'Copied' : label}</span>}
     </button>
   );
