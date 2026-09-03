@@ -173,8 +173,13 @@ export function allDashboards(): SavedDashboard[] {
 }
 
 export function loadLayout(): DashboardLayout {
-  const stored = coerceLayout(readJson<unknown>(LAYOUT_KEY));
-  if (stored && stored.items.length) return stored;
+  const raw = readJson<unknown>(LAYOUT_KEY);
+  const stored = coerceLayout(raw);
+  if (stored && stored.items.length) {
+    // A v1 array was just migrated; write the grid form back so it only happens once.
+    if (Array.isArray(raw)) persistLayout(stored);
+    return stored;
+  }
   const store = loadStore();
   const dash = allDashboards().find((d) => d.id === store.defaultId) ?? BUILTIN_DASHBOARDS[0];
   return cloneLayout(dash.layout);

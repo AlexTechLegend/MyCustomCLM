@@ -107,7 +107,7 @@ export function GridTile({
             className={clsx(
               'absolute z-30 touch-none',
               h.className,
-              h.corner && 'rounded-sm border border-accent bg-surface-raised opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 motion-safe:transition-opacity',
+              h.corner && 'rounded-sm border border-accent bg-surface-raised opacity-70 group-hover:opacity-100 group-focus-within:opacity-100 motion-safe:transition-opacity',
             )}
             onPointerDown={(e) => onStartResize(h.id, e)}
           />

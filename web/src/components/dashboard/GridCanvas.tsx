@@ -116,7 +116,7 @@ export function GridCanvas({
         <div
           aria-hidden
           className={clsx(
-            'absolute z-30 pointer-events-none rounded-2xl border-2 flex items-start justify-start p-2',
+            'absolute z-50 pointer-events-none rounded-2xl border-2 flex items-start justify-start p-2',
             ghost.valid ? 'border-ok-500 bg-ok-500/12' : 'border-crit-500 bg-crit-500/12',
           )}
           style={ghost.rect}
