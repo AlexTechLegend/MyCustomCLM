@@ -13,12 +13,12 @@
     "start": "npm run start -w server",
     "seed": "npm run seed -w server",
     "typecheck": "npm run typecheck -w server && npm run typecheck -w web",
-    "doctor": "node -e \"console.log('node', process.version)\" && openssl version"
+    "doctor": "node scripts/doctor.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
   },
   "engines": {
-    "node": ">=22.13"
+    "node": ">=20"
   }
 }

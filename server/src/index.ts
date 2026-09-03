@@ -2,7 +2,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import fs from 'node:fs';
 import path from 'node:path';
 import { config, ensureDirs, preflightProblems } from './config.js';
-import { db } from './db.js';
+import { db, dbBackend } from './db.js';
 import { OpenSslError } from './openssl.js';
 import { api } from './routes.js';
 
@@ -38,5 +38,6 @@ if (fs.existsSync(config.webDist)) {
 app.listen(config.port, () => {
   console.log(`Vigil server listening on http://localhost:${config.port}`);
   console.log(`Data directory: ${config.dataDir}`);
+  console.log(`Database: ${dbBackend()}`);
   console.log(`OpenSSL: ${config.opensslVersion ?? 'not found'} (${config.opensslBin})`);
 });

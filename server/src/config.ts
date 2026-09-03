@@ -88,9 +88,9 @@ export function ensureDirs() {
 /** Human-readable preflight. Returns null when everything is fine. */
 export function preflightProblems(): string[] {
   const problems: string[] = [];
-  const [major, minor] = process.versions.node.split('.').map(Number);
-  if (major < 22 || (major === 22 && minor < 13)) {
-    problems.push(`Node ${process.versions.node} is too old. Vigil needs Node 22.13 or newer (it uses the built-in node:sqlite module). Install the current LTS from https://nodejs.org.`);
+  const major = Number(process.versions.node.split('.')[0]);
+  if (major < 20) {
+    problems.push(`Node ${process.versions.node} is too old. Vigil needs Node 20 LTS or newer. Install it from https://nodejs.org, re-open your terminal, then run  npm install  again.`);
   }
   if (!config.opensslVersion) {
     const hint =

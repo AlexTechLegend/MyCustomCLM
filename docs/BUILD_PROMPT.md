@@ -54,7 +54,7 @@ It must be simple to use, visually clean and spacious, professional yet modern.
 
 - `web/`: React 19, Vite, TypeScript, Tailwind CSS v4, TanStack Query, React Router,
   Recharts, lucide-react, Inter Variable bundled locally.
-- `server/`: Node 22.13+, Express 5, TypeScript, node:sqlite (built in — no native build), multer, archiver, system OpenSSL 3.
+- `server/`: Node 20+, Express 5, TypeScript, node:sqlite (built in — no native build), multer, archiver, system OpenSSL 3.
 - One process serves API and SPA in production. Dev runs both with proxy.
 - Data lives in `data/` (git-ignored): SQLite, `vault/<certId>/{cert,chain,key}.pem`,
   `renewals/<id>/` rendered outputs, `ca/` internal CA with `openssl ca` database.

@@ -29,8 +29,10 @@ it once with reference files. Every step runs through the system OpenSSL and is 
 
 ## Quick start
 
-Requirements: **Node 22.13 or newer** (uses the built-in `node:sqlite`, so there is nothing
-to compile) and **OpenSSL 3.x**.
+Requirements: **Node 20 LTS or newer** and **OpenSSL 3.x**.
+
+The database uses `better-sqlite3` (prebuilt binary for Windows / macOS / Linux — no
+compiler needed). On Node 22.5+ it can also fall back to the built-in `node:sqlite`.
 
 ```bash
 npm install
@@ -69,7 +71,20 @@ To point at a specific binary: `OPENSSL_BIN=/path/to/openssl npm run seed`
 
 ### Troubleshooting `npm run seed`
 
-- **"Node … is too old"** — install the current LTS from <https://nodejs.org> (22.13+ or 24+), then `npm install` again.
+- **`EBADENGINE` / "Node … is too old"** — Node 18 and below are not supported. Install
+  **Node 20 LTS** (or 22) from <https://nodejs.org>, **close and re-open PowerShell**, then:
+  ```powershell
+  node --version    # must show v20.x or newer
+  npm install
+  npm run seed
+  ```
+- **"Could not open the Vigil database" / better-sqlite3 errors** — the native binding did
+  not download. From the repo root:
+  ```powershell
+  npm rebuild better-sqlite3
+  npm run seed
+  ```
+  If that still fails, install the [Visual C++ Redistributable](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist) and retry.
 - **"OpenSSL was not found"** — see the table above, or set `OPENSSL_BIN`.
 - **"Found LibreSSL …"** (macOS) — `brew install openssl@3`; Vigil picks it up automatically.
 - **"Could not reset … EBUSY / EPERM"** (Windows) — the server or an editor has the `data/`

@@ -1,17 +1,7 @@
+import fs from 'node:fs';
 import { createRequire } from 'node:module';
-import type { DatabaseSync, SQLInputValue } from 'node:sqlite';
-import './lib/quiet-sqlite-warning.js';
 import { config, ensureDirs } from './config.js';
 
-// Loaded lazily with require() so the experimental-warning filter above is installed first;
-// a static ESM import of a builtin is evaluated at link time, before any module body runs.
-const require = createRequire(import.meta.url);
-function loadSqlite(): typeof import('node:sqlite') {
-  return require('node:sqlite') as typeof import('node:sqlite');
-}
-
-type Row = Record<string, unknown>;
-// Positional values, or a single object of named parameters (extra keys are ignored).
 type Params = unknown[];
 
 export interface Statement {
@@ -25,47 +15,146 @@ export interface Db {
   prepare(sql: string): Statement;
 }
 
+const require = createRequire(import.meta.url);
+
 let _db: Db | null = null;
+let _backend: string | null = null;
+
+export function dbBackend() {
+  return _backend;
+}
 
 export function db(): Db {
   if (_db) return _db;
   ensureDirs();
-  const { DatabaseSync } = loadSqlite();
-  const raw = new DatabaseSync(config.dbPath);
-  raw.exec('PRAGMA journal_mode = WAL');
-  raw.exec('PRAGMA foreign_keys = ON');
-  _db = wrap(raw);
+  const opened = openDatabase(config.dbPath);
+  _db = opened.db;
+  _backend = opened.backend;
   migrate(_db);
   return _db;
 }
 
+function openDatabase(dbPath: string): { db: Db; backend: string } {
+  // Prefer better-sqlite3: works on Node 20+ with prebuilt binaries (incl. Windows).
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const Database = require('better-sqlite3') as new (path: string) => {
+      exec(sql: string): void;
+      prepare(sql: string): {
+        run(...p: unknown[]): { changes: number; lastInsertRowid: number | bigint };
+        get(...p: unknown[]): unknown;
+        all(...p: unknown[]): unknown[];
+      };
+      pragma(p: string): unknown;
+    };
+    const raw = new Database(dbPath);
+    raw.pragma('journal_mode = WAL');
+    raw.pragma('foreign_keys = ON');
+    return { db: wrapBetter(raw), backend: 'better-sqlite3' };
+  } catch (betterErr) {
+    // Fall back to Node's built-in sqlite (Node 22.5+).
+    try {
+      // Quiet the experimental warning before the first load.
+      require('./lib/quiet-sqlite-warning.js');
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { DatabaseSync } = require('node:sqlite') as {
+        DatabaseSync: new (path: string) => {
+          exec(sql: string): void;
+          prepare(sql: string): {
+            run(...p: unknown[]): { changes: number | bigint; lastInsertRowid: number | bigint };
+            get(...p: unknown[]): unknown;
+            all(...p: unknown[]): unknown[];
+          };
+        };
+      };
+      const raw = new DatabaseSync(dbPath);
+      raw.exec('PRAGMA journal_mode = WAL');
+      raw.exec('PRAGMA foreign_keys = ON');
+      return { db: wrapNamed(raw), backend: 'node:sqlite' };
+    } catch (sqliteErr) {
+      const betterMsg = betterErr instanceof Error ? betterErr.message : String(betterErr);
+      const sqliteMsg = sqliteErr instanceof Error ? sqliteErr.message : String(sqliteErr);
+      throw new Error(
+        [
+          'Could not open the Vigil database.',
+          '',
+          `  better-sqlite3: ${betterMsg}`,
+          `  node:sqlite:    ${sqliteMsg}`,
+          '',
+          'Fix: use Node 20 LTS (or newer) from https://nodejs.org, then from the repo root run:',
+          '  npm install',
+          '  npm rebuild better-sqlite3',
+          '  npm run seed',
+        ].join('\n'),
+      );
+    }
+  }
+}
+
+/** better-sqlite3 already accepts named objects and ignores unused keys. */
+function wrapBetter(raw: {
+  exec(sql: string): void;
+  prepare(sql: string): {
+    run(...p: unknown[]): { changes: number; lastInsertRowid: number | bigint };
+    get(...p: unknown[]): unknown;
+    all(...p: unknown[]): unknown[];
+  };
+}): Db {
+  return {
+    exec: (sql) => raw.exec(sql),
+    prepare: (sql) => {
+      const stmt = raw.prepare(sql);
+      return {
+        run: (...p) => stmt.run(...normalise(p)),
+        get: (...p) => stmt.get(...normalise(p)),
+        all: (...p) => stmt.all(...normalise(p)),
+      };
+    },
+  };
+}
+
 /**
- * Thin adapter over node:sqlite. Named parameters are passed as plain objects; any keys the
- * statement does not reference are dropped, so a full row object can be handed to a partial
- * UPDATE without error.
+ * node:sqlite rejects unknown named parameters, so filter the object down to the
+ * names the statement actually references.
  */
-function wrap(raw: DatabaseSync): Db {
+function wrapNamed(raw: {
+  exec(sql: string): void;
+  prepare(sql: string): {
+    run(...p: unknown[]): { changes: number | bigint; lastInsertRowid: number | bigint };
+    get(...p: unknown[]): unknown;
+    all(...p: unknown[]): unknown[];
+  };
+}): Db {
   return {
     exec: (sql) => raw.exec(sql),
     prepare(sql) {
       const stmt = raw.prepare(sql);
       const named = new Set([...sql.matchAll(/@([A-Za-z_][A-Za-z0-9_]*)/g)].map((m) => m[1]));
-      const bind = (params: Params): SQLInputValue[] => {
-        if (params.length === 1 && params[0] !== null && typeof params[0] === 'object' && !Array.isArray(params[0]) && !(params[0] instanceof Uint8Array)) {
-          const src = params[0] as Record<string, SQLInputValue | undefined>;
-          const filtered: Record<string, SQLInputValue> = {};
-          for (const k of named) filtered[k] = src[k] === undefined ? null : (src[k] as SQLInputValue);
-          return [filtered as unknown as SQLInputValue];
+      const bind = (params: Params): unknown[] => {
+        if (params.length === 1 && isPlainObject(params[0])) {
+          const src = params[0] as Record<string, unknown>;
+          const filtered: Record<string, unknown> = {};
+          for (const k of named) filtered[k] = src[k] === undefined ? null : src[k];
+          return [filtered];
         }
-        return params.map((p) => (p === undefined ? null : p)) as SQLInputValue[];
+        return params.map((p) => (p === undefined ? null : p));
       };
       return {
         run: (...p) => stmt.run(...bind(p)),
-        get: (...p) => stmt.get(...bind(p)) as Row | undefined,
-        all: (...p) => stmt.all(...bind(p)) as Row[],
+        get: (...p) => stmt.get(...bind(p)),
+        all: (...p) => stmt.all(...bind(p)),
       };
     },
   };
+}
+
+function normalise(params: Params): unknown[] {
+  if (params.length === 1 && isPlainObject(params[0])) return [params[0]];
+  return params.map((p) => (p === undefined ? null : p));
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return v !== null && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Uint8Array) && !Buffer.isBuffer(v);
 }
 
 function migrate(d: Db) {
@@ -165,4 +254,10 @@ export function parseJson<T>(value: unknown, fallback: T): T {
   } catch {
     return fallback;
   }
+}
+
+/** Used by tests / diagnostics — closes nothing (process exit cleans up). */
+export function ensureDataDirWritable() {
+  ensureDirs();
+  fs.accessSync(config.dataDir, fs.constants.W_OK);
 }

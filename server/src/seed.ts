@@ -7,7 +7,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { config, ensureDirs, preflightProblems } from './config.js';
-import { db, newId, nowIso } from './db.js';
+import { db, dbBackend, newId, nowIso } from './db.js';
 import { createCa, createCsr, generateKey, newLog, parseCertificate, readCaCert, signWithCa, selfSign, type Material } from './openssl.js';
 import { insertCertificate } from './services/certificates.js';
 import { recordEvent } from './services/events.js';
@@ -104,6 +104,7 @@ async function main() {
   console.log(`Resetting data directory ${config.dataDir}…`);
   await resetData();
   db();
+  console.log(`Database backend: ${dbBackend()}`);
 
   saveSettings({ organisation: 'Contoso Ltd' });
 
