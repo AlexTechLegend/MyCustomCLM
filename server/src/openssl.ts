@@ -153,7 +153,7 @@ export async function parseCertificate(pemInput: string, log?: CommandLog): Prom
     key.asymmetricKeyType === 'rsa'
       ? 'RSA'
       : key.asymmetricKeyType === 'ec'
-        ? `EC ${(details as { namedCurve?: string }).namedCurve ?? ''}`.trim()
+        ? `EC ${curveLabel((details as { namedCurve?: string }).namedCurve)}`.trim()
         : (key.asymmetricKeyType ?? 'unknown').toUpperCase();
   const keyBits = (details as { modulusLength?: number }).modulusLength ?? curveBits((details as { namedCurve?: string }).namedCurve);
   let sigAlgo = '';
@@ -190,6 +190,11 @@ export async function parseCertificate(pemInput: string, log?: CommandLog): Prom
     keyUsage: x.keyUsage ?? [],
     x509: x,
   };
+}
+
+function curveLabel(curve?: string): string {
+  const map: Record<string, string> = { prime256v1: 'P-256', secp256r1: 'P-256', secp384r1: 'P-384', secp521r1: 'P-521' };
+  return curve ? map[curve] ?? curve : '';
 }
 
 function curveBits(curve?: string): number | null {
@@ -545,9 +550,21 @@ export function specFromDetected(d: DetectedFormat, id: string): OutputSpec {
   const baseName = path.basename(d.sourceFilename, ext);
   const isKeyOnly = d.format === 'pem-key' || d.format === 'pem-key-encrypted' || d.format === 'der-key';
   const filename = isKeyOnly || /^(private|server|tls|key|fullchain|chain|cert|certificate|bundle)$/i.test(baseName) ? d.sourceFilename : `{cn_safe}${ext}`;
+  const labels: Partial<Record<OutputFormat, string>> = {
+    'pem-cert': 'Certificate (PEM)',
+    'pem-fullchain': d.includesRoot ? 'Full chain incl. root (PEM)' : 'Full chain (PEM)',
+    'pem-bundle': 'Certificate + key bundle (PEM)',
+    'der-cert': 'Certificate (DER)',
+    pkcs12: 'PKCS#12 archive',
+    'pkcs7-pem': 'PKCS#7 bundle (PEM)',
+    'pkcs7-der': 'PKCS#7 bundle (DER)',
+    'pem-key': `Private key (${(d.keyEncoding ?? 'pkcs8').toUpperCase()}, decrypted)`,
+    'pem-key-encrypted': `Private key (${(d.keyEncoding ?? 'pkcs8').toUpperCase()}, encrypted)`,
+    'der-key': 'Private key (DER)',
+  };
   return {
     id,
-    label: d.summary,
+    label: (d.format && labels[d.format]) || d.summary,
     filename,
     format: d.format ?? 'pem-cert',
     lineEnding: d.lineEnding,

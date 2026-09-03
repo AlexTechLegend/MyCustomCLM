@@ -334,7 +334,6 @@ function AnalyzeModal({ onClose, onAdd }: { onClose: () => void; onAdd: (s: Outp
               {result.detected.details.map((d, i) => (
                 <li key={i}>{d}</li>
               ))}
-              {result.detected.container === 'pem' && <li>Line endings {result.detected.lineEnding.toUpperCase()}{result.detected.trailingNewline ? '' : ', no trailing newline'}</li>}
             </ul>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

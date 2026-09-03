@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { ArrowUpDown, KeyRound, RefreshCw, Search, ShieldCheck } from 'lucide-react';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Badge, Card, Chips, EmptyState, ErrorBox, Input, LifetimeBar, LinkButton, Loading, PageHeader, Select, StatusBadge } from '@/components/ui';
 import { api } from '@/lib/api';
@@ -16,6 +16,16 @@ export function Certificates() {
   const source = params.get('source') ?? 'all';
   const sort = params.get('sort') ?? 'expiry';
   const profileId = params.get('profileId') ?? undefined;
+
+  // Local state for the search box so fast typing is never throttled by URL updates.
+  const [search, setSearch] = useState(q);
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      if (search !== q) set({ q: search });
+    }, 150);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
 
   const set = (patch: Record<string, string | undefined>) => {
     const next = new URLSearchParams(params);
@@ -67,7 +77,7 @@ export function Certificates() {
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <div className="relative flex-1 min-w-[260px] max-w-md">
           <Search className="size-4 text-ink-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <Input value={q} onChange={(e) => set({ q: e.target.value })} placeholder="Search certificates…" className="pl-9" autoFocus />
+          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search certificates…" className="pl-9" autoFocus />
         </div>
         <Chips
           value={status}
@@ -80,16 +90,18 @@ export function Certificates() {
             { id: 'expired', label: 'Expired', count: counts.expired },
           ]}
         />
-        <div className="flex items-center gap-2 ml-auto">
-          <Select value={source} onChange={(e) => set({ source: e.target.value })} className="w-40 h-8 text-[13px] rounded-lg">
-            <option value="all">All sources</option>
-            {Object.entries(SOURCE_LABEL).map(([k, v]) => (
-              <option key={k} value={k}>{v}</option>
-            ))}
-          </Select>
-          <div className="relative">
+        <div className="flex items-center gap-2 ml-auto shrink-0">
+          <div className="w-40">
+            <Select value={source} onChange={(e) => set({ source: e.target.value })} className="h-8 text-[13px] rounded-lg">
+              <option value="all">All sources</option>
+              {Object.entries(SOURCE_LABEL).map(([k, v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+            </Select>
+          </div>
+          <div className="relative w-48">
             <ArrowUpDown className="size-3.5 text-ink-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <Select value={sort} onChange={(e) => set({ sort: e.target.value })} className="w-44 h-8 text-[13px] rounded-lg pl-8">
+            <Select value={sort} onChange={(e) => set({ sort: e.target.value })} className="h-8 text-[13px] rounded-lg pl-8">
               <option value="expiry">Soonest expiry</option>
               <option value="name">Name A–Z</option>
               <option value="issuer">Issuer</option>
