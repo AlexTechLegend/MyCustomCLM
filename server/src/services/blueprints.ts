@@ -225,7 +225,7 @@ export async function instantiateBlueprint(blueprintId: string, input: Instantia
     source,
   });
 
-  attachCertificateBlueprint(cert.id, blueprint.id, blueprint.version, sans);
+  attachCertificateBlueprint(cert.id, blueprint.id, blueprint.version, cert.sans);
   if (input.hostIds?.length) setCertificateHosts(cert.id, input.hostIds);
   const next = computeNextRenewalAt(blueprint, leaf.notAfter);
   if (next) setCertificateNextRenewal(cert.id, next);
@@ -247,6 +247,10 @@ export type DriftFinding = {
   expected: unknown;
   actual: unknown;
 };
+
+function normaliseSan(value: string): string {
+  return value.replace(/^(DNS|IP|IP4|IP6|email|URI):/i, '').toLowerCase();
+}
 
 function keyModeMatches(mode: KeyMode, cert: Certificate): boolean {
   if (mode === 'reuse') return true;
@@ -300,8 +304,8 @@ export function detectBlueprintDrift(blueprintId: string): {
       });
     }
     if (cert.blueprintSans.length) {
-      const expected = [...cert.blueprintSans].sort();
-      const actual = [...cert.sans].sort();
+      const expected = [...cert.blueprintSans].map(normaliseSan).sort();
+      const actual = [...cert.sans].map(normaliseSan).sort();
       if (JSON.stringify(expected) !== JSON.stringify(actual)) {
         findings.push({
           certificateId: cert.id,
