@@ -501,8 +501,8 @@ function BuilderModal({ onClose, onAdd, destinationPath }: { onClose: () => void
         value={category}
         onChange={setCategory}
       />
-      <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <ul className="space-y-2 max-h-[480px] overflow-y-auto pr-1">
+      <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-5">
+        <ul className="space-y-2 max-h-[min(420px,52vh)] overflow-y-auto pr-1">
           {presets.map((p) => {
             const on = selected.includes(p.id);
             const focusedOn = focusId === p.id;
@@ -538,7 +538,7 @@ function BuilderModal({ onClose, onAdd, destinationPath }: { onClose: () => void
             );
           })}
         </ul>
-        <div className="lg:sticky lg:top-0">
+        <div className="md:sticky md:top-0">
           <FormatPreviewPane spec={focused.defaults} destinationPath={destinationPath || '{cn_safe}'} siblings={folderFiles} />
         </div>
       </div>
