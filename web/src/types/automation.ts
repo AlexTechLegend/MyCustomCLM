@@ -24,6 +24,7 @@ export interface Job {
 
 export type HostPlatform = 'windows' | 'linux' | 'other';
 export type AgentStatus = 'unknown' | 'online' | 'offline' | 'disabled';
+export type HostTransport = 'none' | 'winrm' | 'ssh' | 'agent';
 
 export interface Host {
   id: string;
@@ -41,6 +42,27 @@ export interface Host {
   createdAt: string;
   updatedAt: string;
   certificateIds?: string[];
+  transport?: HostTransport;
+  transportConfig?: Record<string, unknown>;
+  agentTokenCredentialId?: string | null;
+}
+
+export interface DiscoveryResult {
+  id: string;
+  scanId: string;
+  address: string;
+  port: number;
+  hostname: string;
+  subject: string;
+  issuer: string;
+  notAfter: string | null;
+  fingerprintSha256: string;
+  matchedCertificateId: string | null;
+  firstSeen: string;
+  lastSeen: string;
+  status?: 'unknown' | 'known' | 'known-but-different';
+  certificateName?: string;
+  error?: string;
 }
 
 export type CredentialKind = 'password' | 'service-account' | 'api-token' | 'ssh-key' | 'pfx-password';
@@ -144,6 +166,7 @@ export interface PipelineRun {
   params: Record<string, unknown>;
   approvedBy: string | null;
   approvedAt: string | null;
+  decisionNote: string | null;
   startedAt: string | null;
   finishedAt: string | null;
   createdAt: string;

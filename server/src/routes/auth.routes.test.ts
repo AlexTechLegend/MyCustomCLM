@@ -41,6 +41,7 @@ const MUTATING: [string, string][] = [
   ['POST', '/api/pipeline-runs/run_x/reject'],
   ['POST', '/api/users'],
   ['PUT', '/api/settings'],
+  ['PUT', '/api/dashboard-templates'],
   ['POST', '/api/discovery/scan'],
   ['POST', '/api/pipelines/preflight'],
   ['POST', '/api/notifications/ntf_x/test'],

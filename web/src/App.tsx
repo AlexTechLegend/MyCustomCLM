@@ -9,6 +9,7 @@ import { CertificateDetail } from './pages/CertificateDetail';
 import { Certificates } from './pages/Certificates';
 import { Credentials } from './pages/Credentials';
 import { Dashboard } from './pages/Dashboard';
+import { Discovery } from './pages/Discovery';
 import { DashboardBuilder } from './pages/DashboardBuilder';
 import { Hosts } from './pages/Hosts';
 import { ImportCertificate } from './pages/ImportCertificate';
@@ -46,6 +47,7 @@ export default function App() {
         <Route path="activity" element={<Activity />} />
         <Route path="settings" element={<Settings />} />
         <Route path="hosts" element={<Hosts />} />
+        <Route path="discovery" element={<Discovery />} />
         <Route path="blueprints" element={<Blueprints />} />
         <Route path="blueprints/new" element={<BlueprintEditor />} />
         <Route path="blueprints/:id" element={<BlueprintEditor />} />

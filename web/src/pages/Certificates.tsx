@@ -1,13 +1,14 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import { ArrowUpDown, Bookmark, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, KeyRound, RefreshCw, Search, ShieldCheck, X } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { BulkBar, TableCheckbox } from '@/components/BulkBar';
+import { CERT_TABLE_COLUMNS, CertPeekPanel, isPeekGuardTarget, PEEK_HOVER_MS } from '@/components/CertPeekPanel';
 import { CertRowMenu } from '@/components/CertRowMenu';
 import { useToast } from '@/components/Toast';
 import { Badge, Button, Card, Chips, EmptyState, ErrorBox, Field, Input, LifetimeBar, LinkButton, Loading, Modal, PageHeader, Select, StatusBadge } from '@/components/ui';
-import { api } from '@/lib/api';
+import { api, blueprintsApi, windowsApi } from '@/lib/api';
 import { formatDate, relativeDays, SOURCE_LABEL } from '@/lib/format';
 import { deleteView, loadSavedViews, normalizeQuery, saveView, viewsEqual, type SavedView } from '@/lib/savedViews';
 import type { CertStatus, Certificate } from '@/types';
@@ -145,6 +146,30 @@ export function Certificates() {
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveName, setSaveName] = useState('');
   const [deleteViewTarget, setDeleteViewTarget] = useState<SavedView | null>(null);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [pinnedId, setPinnedId] = useState<string | null>(null);
+  const hoverTimer = useRef<number | null>(null);
+
+  const clearHoverTimer = () => {
+    if (hoverTimer.current != null) {
+      window.clearTimeout(hoverTimer.current);
+      hoverTimer.current = null;
+    }
+  };
+
+  const beginHover = (id: string) => {
+    clearHoverTimer();
+    hoverTimer.current = window.setTimeout(() => setHoveredId(id), PEEK_HOVER_MS);
+  };
+
+  const endHover = (id: string) => {
+    clearHoverTimer();
+    setHoveredId((current) => (current === id ? null : current));
+  };
+
+  const togglePin = (id: string) => {
+    setPinnedId((current) => (current === id ? null : id));
+  };
 
   useEffect(() => {
     setSearch(q);
@@ -163,6 +188,25 @@ export function Certificates() {
     setSelected(new Set());
   }, [filterKey]);
 
+  useEffect(() => {
+    clearHoverTimer();
+    setHoveredId(null);
+    setPinnedId(null);
+  }, [filterKey, page, pageSize]);
+
+  useEffect(() => () => clearHoverTimer(), []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setPinnedId(null);
+      setHoveredId(null);
+      clearHoverTimer();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
   const set = (patch: Record<string, string | undefined>) => {
     const next = new URLSearchParams(params);
     for (const [k, v] of Object.entries(patch)) {
@@ -177,6 +221,8 @@ export function Certificates() {
   const all = useQuery({ queryKey: ['certificates', { profileId, tag, groupId }], queryFn: () => api.certificates({ profileId, tag, groupId, sort: 'expiry' }) });
   const profiles = useQuery({ queryKey: ['profiles'], queryFn: () => api.profiles() });
   const tagsMeta = useQuery({ queryKey: ['tags'], queryFn: api.tags });
+  const blueprints = useQuery({ queryKey: ['blueprints'], queryFn: blueprintsApi.list });
+  const windows = useQuery({ queryKey: ['windows'], queryFn: windowsApi.list });
 
   const filtered = useMemo(() => {
     let list = all.data ?? [];
@@ -450,63 +496,112 @@ export function Certificates() {
                   <th className="px-6 py-2" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-ink-100">
-                {paged.map((c) => (
-                  <tr key={c.id} className="hover:bg-ink-50/70 transition-colors group">
-                    <td className="pl-6 pr-2 py-2">
-                      <TableCheckbox
-                        checked={selected.has(c.id)}
-                        onChange={(on) => {
-                          setSelected((prev) => {
-                            const next = new Set(prev);
-                            if (on) next.add(c.id);
-                            else next.delete(c.id);
-                            return next;
-                          });
-                        }}
-                        label={`Select ${c.name}`}
-                      />
-                    </td>
-                    <td className="px-2 py-2">
-                      <Link to={`/certificates/${c.id}`} className="font-medium text-ink-950 hover:text-brand-700 block truncate max-w-[280px]">
-                        {c.name}
-                      </Link>
-                      <div className="text-[12px] text-ink-500 truncate max-w-[280px]">
-                        {c.sans.length > 1 ? `${c.sans.length} SANs · ` : ''}
-                        {c.tags.length ? c.tags.join(', ') : SOURCE_LABEL[c.source]}
-                      </div>
-                    </td>
-                    <td className="px-4 py-2 text-ink-700 truncate max-w-[200px]">{c.issuerCommonName}</td>
-                    <td className="px-4 py-2">
-                      <div className="flex items-baseline justify-between gap-2">
-                        <span className="text-ink-900 tnum">{formatDate(c.notAfter)}</span>
-                        <span className={`text-[12px] tnum ${c.daysRemaining <= 7 ? 'text-crit-600 font-medium' : 'text-ink-500'}`}>{relativeDays(c.daysRemaining)}</span>
-                      </div>
-                      <LifetimeBar used={c.lifetimeUsed} status={c.status} className="mt-1.5" />
-                    </td>
-                    <td className="px-4 py-2 text-ink-700 whitespace-nowrap">
-                      <span className="inline-flex items-center gap-1.5">
-                        {c.hasKey && <KeyRound className="size-3.5 text-ink-400" />}
-                        {c.keyAlgo} {c.keyBits ?? ''}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2">
-                      <div className="flex flex-wrap gap-1">
-                        {c.profileIds.length === 0 ? <span className="text-[12px] text-ink-400">—</span> : c.profileIds.map((id) => <Badge key={id}>{profileName(id)}</Badge>)}
-                      </div>
-                    </td>
-                    <td className="px-4 py-2"><StatusBadge status={c.status} /></td>
-                    <td className="px-6 py-2 text-right">
-                      <div className="inline-flex items-center justify-end gap-1">
-                        <LinkButton to={`/certificates/${c.id}/renew`} variant="secondary" size="sm" icon={<RefreshCw className="size-3.5" />} className="group-hover:border-ink-300">
-                          Renew
-                        </LinkButton>
-                        <CertRowMenu cert={c} />
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
+              {paged.map((c) => {
+                const peekOpen = hoveredId === c.id || pinnedId === c.id;
+                return (
+                  <tbody
+                    key={c.id}
+                    className={clsx('border-b border-ink-100', peekOpen && 'bg-ink-50/40')}
+                    onMouseEnter={() => beginHover(c.id)}
+                    onMouseLeave={() => endHover(c.id)}
+                  >
+                    <tr
+                      tabIndex={0}
+                      aria-expanded={peekOpen}
+                      className="hover:bg-ink-50/70 transition-colors group outline-none focus-visible:bg-ink-50/70"
+                      onClick={(e) => {
+                        if (isPeekGuardTarget(e.target)) return;
+                        togglePin(c.id);
+                      }}
+                      onKeyDown={(e) => {
+                        if (isPeekGuardTarget(e.target)) return;
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setPinnedId(c.id);
+                          setHoveredId(c.id);
+                        }
+                        if (e.key === 'Escape') {
+                          e.preventDefault();
+                          setPinnedId(null);
+                          setHoveredId(null);
+                          clearHoverTimer();
+                        }
+                      }}
+                    >
+                      <td className="pl-6 pr-2 py-2">
+                        <TableCheckbox
+                          checked={selected.has(c.id)}
+                          onChange={(on) => {
+                            setSelected((prev) => {
+                              const next = new Set(prev);
+                              if (on) next.add(c.id);
+                              else next.delete(c.id);
+                              return next;
+                            });
+                          }}
+                          label={`Select ${c.name}`}
+                        />
+                      </td>
+                      <td className="px-2 py-2">
+                        <Link to={`/certificates/${c.id}`} className="font-medium text-ink-950 hover:text-brand-700 block truncate max-w-[280px]">
+                          {c.name}
+                        </Link>
+                        <div className="text-[12px] text-ink-500 truncate max-w-[280px]">
+                          {c.sans.length > 1 ? `${c.sans.length} SANs · ` : ''}
+                          {c.tags.length ? c.tags.join(', ') : SOURCE_LABEL[c.source]}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2 text-ink-700 truncate max-w-[200px]">{c.issuerCommonName}</td>
+                      <td className="px-4 py-2">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="text-ink-900 tnum">{formatDate(c.notAfter)}</span>
+                          <span className={`text-[12px] tnum ${c.daysRemaining <= 7 ? 'text-crit-600 font-medium' : 'text-ink-500'}`}>{relativeDays(c.daysRemaining)}</span>
+                        </div>
+                        <LifetimeBar used={c.lifetimeUsed} status={c.status} className="mt-1.5" />
+                      </td>
+                      <td className="px-4 py-2 text-ink-700 whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1.5">
+                          {c.hasKey && <KeyRound className="size-3.5 text-ink-400" />}
+                          {c.keyAlgo} {c.keyBits ?? ''}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2">
+                        <div className="flex flex-wrap gap-1">
+                          {c.profileIds.length === 0 ? <span className="text-[12px] text-ink-400">—</span> : c.profileIds.map((id) => <Badge key={id}>{profileName(id)}</Badge>)}
+                        </div>
+                      </td>
+                      <td className="px-4 py-2"><StatusBadge status={c.status} /></td>
+                      <td className="px-6 py-2 text-right">
+                        <div className="inline-flex items-center justify-end gap-1">
+                          <LinkButton to={`/certificates/${c.id}/renew`} variant="secondary" size="sm" icon={<RefreshCw className="size-3.5" />} className="group-hover:border-ink-300">
+                            Renew
+                          </LinkButton>
+                          <CertRowMenu cert={c} />
+                        </div>
+                      </td>
+                    </tr>
+                    <tr aria-hidden={!peekOpen}>
+                      <td colSpan={CERT_TABLE_COLUMNS} className="p-0">
+                        <div
+                          className={clsx(
+                            'grid motion-reduce:transition-none transition-[grid-template-rows] duration-200 ease-out',
+                            peekOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
+                          )}
+                        >
+                          <div className="overflow-hidden">
+                            <CertPeekPanel
+                              cert={c}
+                              profiles={profiles.data ?? []}
+                              blueprints={blueprints.data ?? []}
+                              windows={windows.data ?? []}
+                            />
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  </tbody>
+                );
+              })}
             </table>
             {filtered.length > paged.length && allFilteredSelected && (
               <p className="px-6 py-2 text-[12px] text-ink-500 border-t border-ink-100">

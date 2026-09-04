@@ -19,6 +19,7 @@ const GO_TO: { label: string; to: string; keywords?: string }[] = [
   { label: 'Activity', to: '/activity' },
   { label: 'Settings', to: '/settings' },
   { label: 'Hosts', to: '/hosts', keywords: 'server machine' },
+  { label: 'Discovery', to: '/discovery', keywords: 'scan cidr tls' },
   { label: 'Blueprints', to: '/blueprints', keywords: 'template onboard' },
   { label: 'Pipelines', to: '/pipelines', keywords: 'deploy steps' },
   { label: 'Jobs', to: '/jobs', keywords: 'scheduler queue' },

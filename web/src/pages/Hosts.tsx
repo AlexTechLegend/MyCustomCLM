@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom';
 import { useToast } from '@/components/Toast';
 import { Badge, Button, Card, EmptyState, ErrorBox, Field, Input, Loading, Modal, PageHeader, Select, Textarea } from '@/components/ui';
 import { credentialsApi, hostsApi } from '@/lib/api';
-import type { AgentStatus, Host, HostPlatform } from '@/types/automation';
+import type { AgentStatus, Host, HostPlatform, HostTransport } from '@/types/automation';
 
 const EMPTY: Partial<Host> = {
   name: '',
@@ -17,6 +17,7 @@ const EMPTY: Partial<Host> = {
   credentialId: null,
   notes: '',
   tags: [],
+  transport: 'none',
 };
 
 export function Hosts() {
@@ -78,6 +79,7 @@ export function Hosts() {
               </div>
               <div className="mt-3 flex flex-wrap gap-1.5 text-[12px] text-text-soft">
                 <span>{h.platform}</span>
+                {h.transport && h.transport !== 'none' && <span>· {h.transport}</span>}
                 {h.environment && <span>· {h.environment}</span>}
                 {h.certificateIds?.length ? <span>· {h.certificateIds.length} certs</span> : null}
               </div>
@@ -125,6 +127,14 @@ export function Hosts() {
               <Field label="Environment"><Input value={edit.environment ?? ''} onChange={(e) => setEdit({ ...edit, environment: e.target.value })} /></Field>
             </div>
             <Field label="Owner"><Input value={edit.owner ?? ''} onChange={(e) => setEdit({ ...edit, owner: e.target.value })} /></Field>
+            <Field label="Transport">
+              <Select value={edit.transport ?? 'none'} onChange={(e) => setEdit({ ...edit, transport: e.target.value as HostTransport })}>
+                <option value="none">Local / none</option>
+                <option value="winrm">WinRM</option>
+                <option value="ssh">SSH</option>
+                <option value="agent">Agent</option>
+              </Select>
+            </Field>
             <Field label="Credential">
               <Select value={edit.credentialId ?? ''} onChange={(e) => setEdit({ ...edit, credentialId: e.target.value || null })}>
                 <option value="">None</option>
