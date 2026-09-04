@@ -15,6 +15,8 @@ import { renewalsRoutes } from './renewals.routes.js';
 import { settingsRoutes } from './settings.routes.js';
 import { systemRoutes } from './system.routes.js';
 import { windowsRoutes } from './windows.routes.js';
+import { discoveryRoutes } from './discovery.routes.js';
+import { connectorsRoutes } from './connectors.routes.js';
 
 export const api = Router();
 
@@ -23,9 +25,7 @@ api.use(authMiddleware);
 api.use(viewerReadOnly);
 
 // ---------------------------------------------------------------------------
-// Domain mount list.
-// Append one `api.use(...)` line to add a router (discovery, CA connectors, …).
-// File: server/src/routes/index.ts
+// Domain mount list. Agent wire routes live on the app (not /api) in lib/app.ts.
 // ---------------------------------------------------------------------------
 api.use(healthRoutes);
 api.use(systemRoutes);
@@ -42,5 +42,5 @@ api.use(blueprintsRoutes);
 api.use(windowsRoutes);
 api.use(authRoutes);
 api.use(notificationsRoutes);
-// api.use(discoveryRoutes);      // automation-engine
-// api.use(connectorsRoutes);     // automation-engine
+api.use(discoveryRoutes);
+api.use(connectorsRoutes);

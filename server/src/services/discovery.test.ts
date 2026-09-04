@@ -1,6 +1,16 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
-import { expandCidr, expandDiscoveryTargets } from './discovery.js';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { before, describe, it } from 'node:test';
+
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vigil-disc-'));
+process.env.VIGIL_DATA_DIR = dir;
+process.env.VIGIL_SCHEDULER = '0';
+process.env.VIGIL_LOG_LEVEL = 'error';
+
+const { resetDbHandle, db } = await import('../db.js');
+const { expandCidr, expandDiscoveryTargets, listDiscoveryResults, persistDiscoveryHits } = await import('./discovery.js');
 
 describe('expandCidr', () => {
   it('expands a /30 into two usable hosts', () => {
@@ -24,5 +34,30 @@ describe('expandDiscoveryTargets', () => {
     const out = expandDiscoveryTargets(['example.test', '10.0.0.0/30']);
     assert.ok(out.includes('example.test'));
     assert.ok(out.includes('10.0.0.1'));
+  });
+});
+
+describe('persistDiscoveryHits', () => {
+  before(() => {
+    process.env.VIGIL_DATA_DIR = dir;
+    resetDbHandle();
+    db();
+  });
+
+  it('inserts then updates last_seen on the same fingerprint', () => {
+    const first = persistDiscoveryHits('scan_a', [
+      { host: '192.0.2.10', port: 443, fingerprintSha256: 'bb'.repeat(32), commonName: 'a.example', status: 'unknown' },
+    ]);
+    assert.equal(first.length, 1);
+    const second = persistDiscoveryHits('scan_b', [
+      { host: '192.0.2.10', port: 443, fingerprintSha256: 'bb'.repeat(32), commonName: 'a.example', status: 'known' },
+    ]);
+    assert.equal(second.length, 1);
+    assert.equal(second[0].id, first[0].id);
+    assert.equal(second[0].scanId, 'scan_b');
+    assert.equal(second[0].firstSeen, first[0].firstSeen);
+    const listed = listDiscoveryResults({ scanId: 'scan_b' });
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0].address, '192.0.2.10');
   });
 });

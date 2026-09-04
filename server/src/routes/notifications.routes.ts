@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { auditToCsv, listAudit } from '../services/audit.js';
 import { requireRole } from '../services/auth.js';
-import { createNotificationTarget, deleteNotificationTarget, getNotificationTarget, listNotificationTargets, updateNotificationTarget } from '../services/notifications.js';
+import { createNotificationTarget, deleteNotificationTarget, getNotificationTarget, listNotificationTargets, testSendNotification, updateNotificationTarget } from '../services/notifications.js';
 import { str, wrap } from './http.js';
 
 export const notificationsRoutes = Router();
@@ -26,6 +26,15 @@ notificationsRoutes.put(
   }),
 );
 notificationsRoutes.delete('/notifications/:id', requireRole('admin'), wrap((req, res) => res.status(deleteNotificationTarget(req.params.id as string) ? 204 : 404).end()));
+notificationsRoutes.post(
+  '/notifications/:id/test',
+  requireRole('admin'),
+  wrap(async (req, res) => {
+    const t = getNotificationTarget(req.params.id as string);
+    if (!t) return res.status(404).json({ error: 'Notification target not found' });
+    res.json(await testSendNotification(t.id));
+  }),
+);
 
 notificationsRoutes.get(
   '/audit',

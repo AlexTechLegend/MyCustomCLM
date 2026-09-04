@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { config } from '../config.js';
 import { OpenSslError } from '../openssl.js';
+import { agentRoutes } from '../routes/agent.routes.js';
 import { api } from '../routes/index.js';
 import { RateLimitedError } from './rateLimit.js';
 import { log } from './logger.js';
@@ -11,6 +12,7 @@ export function createApp() {
   const app = express();
   app.disable('x-powered-by');
   app.use(express.json({ limit: '2mb' }));
+  app.use(agentRoutes);
   app.use('/api', api);
   app.use('/api', (err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     if (err instanceof RateLimitedError) {
