@@ -26,6 +26,10 @@ export interface Certificate {
   /** Optional per-certificate deploy directory. Overrides the profile destination when set. */
   destinationOverride: string;
   renewalCount: number;
+  blueprintId?: string | null;
+  blueprintVersion?: number | null;
+  nextRenewalAt?: string | null;
+  blueprintSans?: string[];
   createdAt: string;
   updatedAt: string;
   status: CertStatus;

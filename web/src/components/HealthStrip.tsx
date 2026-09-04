@@ -50,8 +50,9 @@ export function HealthStrip({ onOpenDiagnostics }: { onOpenDiagnostics: () => vo
         <button type="button" onClick={onOpenDiagnostics} className="inline-flex items-center gap-1.5 px-2.5 h-7 rounded-lg border border-transparent text-text-mid hover:bg-canvas hover:border-line">
           Diagnostics
         </button>
-        <span
-          className="inline-flex items-center gap-1.5 px-2.5 h-7 rounded-lg text-text-soft ml-auto"
+        <Link
+          to="/jobs"
+          className="inline-flex items-center gap-1.5 px-2.5 h-7 rounded-lg text-text-soft ml-auto hover:bg-canvas hover:border-line border border-transparent"
           title={sched?.configured ? sched.label : 'Scheduler endpoint is not available yet'}
         >
           <RadioTower className="size-3.5" />
@@ -60,7 +61,7 @@ export function HealthStrip({ onOpenDiagnostics }: { onOpenDiagnostics: () => vo
               ? `Scheduler ${timeAgo(sched.lastRunAt)}`
               : 'Scheduler configured'
             : 'Scheduler not configured'}
-        </span>
+        </Link>
       </div>
     </div>
   );
