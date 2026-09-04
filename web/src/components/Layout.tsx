@@ -126,43 +126,6 @@ export function Layout() {
   const [shortcuts, setShortcuts] = useState(false);
   const pendingG = useRef<number | null>(null);
   const attention = (data?.counts.critical ?? 0) + (data?.counts.expired ?? 0);
-  const [diagnostics, setDiagnostics] = useState(false);
-  const [shortcuts, setShortcuts] = useState(false);
-  const pendingG = useRef<number | null>(null);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (isTyping(e.target)) return;
-      if (e.key === 'Escape') {
-        setDiagnostics(false);
-        setShortcuts(false);
-        return;
-      }
-      if (e.key === '?' && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        e.preventDefault();
-        setShortcuts((v) => !v);
-        return;
-      }
-      if (e.key === 'g' && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        if (pendingG.current) window.clearTimeout(pendingG.current);
-        pendingG.current = window.setTimeout(() => {
-          pendingG.current = null;
-        }, 800);
-        return;
-      }
-      if (pendingG.current && !e.metaKey && !e.ctrlKey) {
-        const to = G_JUMP[e.key.toLowerCase()];
-        window.clearTimeout(pendingG.current);
-        pendingG.current = null;
-        if (to) {
-          e.preventDefault();
-          nav(to);
-        }
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [nav]);
 
   useEffect(() => {
     setMobileOpen(false);
