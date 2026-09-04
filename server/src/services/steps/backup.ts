@@ -1,5 +1,3 @@
-import fs from 'node:fs/promises';
-import path from 'node:path';
 import type { StepHandler } from './types.js';
 import { resolvePathTemplate } from './types.js';
 
@@ -10,31 +8,32 @@ export const backupStep: StepHandler = {
     const backupRoot = resolvePathTemplate(String(step.config.backupRoot || ctx.params.backupRoot || ''), ctx);
     if (!sourceDir || !backupRoot) throw new Error('backup requires config.source (or params.prodDir) and config.backupRoot');
 
+    const t = ctx.transport;
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const backupDir = path.join(backupRoot, stamp);
+    const backupDir = t.join(backupRoot, stamp);
 
     if (ctx.dryRun) {
       return { outputs: { backupDir, files: [] }, stdout: `Would back up ${sourceDir} → ${backupDir}` };
     }
 
-    await fs.mkdir(backupDir, { recursive: true });
+    await t.mkdir(backupDir);
     let entries: string[] = [];
     try {
-      entries = await fs.readdir(sourceDir);
+      entries = await t.readdir(sourceDir);
     } catch (e) {
       const err = e as NodeJS.ErrnoException;
-      if (err.code === 'ENOENT') {
+      if (err.code === 'ENOENT' || /ENOENT|did not exist|no such file/i.test(String(err.message))) {
         return { outputs: { backupDir, files: [], empty: true }, stdout: `Source ${sourceDir} did not exist — empty backup created.` };
       }
       throw e;
     }
     const files: string[] = [];
     for (const name of entries) {
-      const from = path.join(sourceDir, name);
-      const to = path.join(backupDir, name);
-      const st = await fs.stat(from);
-      if (st.isFile()) {
-        await fs.copyFile(from, to);
+      const from = t.join(sourceDir, name);
+      const to = t.join(backupDir, name);
+      const st = await t.stat(from);
+      if (st.isFile) {
+        await t.copy(from, to);
         files.push(name);
       }
     }

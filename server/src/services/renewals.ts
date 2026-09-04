@@ -11,12 +11,9 @@ import {
   newLog,
   normaliseSans,
   parseCertificate,
-  readCaCert,
   renderDestinationPath,
   renderFilename,
   renderOutput,
-  selfSign,
-  signWithCa,
   type CommandLog,
   type Material,
   type ParsedCert,
@@ -27,7 +24,10 @@ import type { Certificate, Job, KeyMode, Profile, Renewal, RenewalMethod, Renewa
 import { writeAudit } from './audit.js';
 import { getBlueprint, computeNextRenewalAt } from './blueprints.js';
 import { getCertificate, readVault, replaceCertificateMaterial, setCertificateNextRenewal } from './certificates.js';
+import { selectIssuanceConnector } from './connectors/index.js';
+import type { PolicyConnectorExtras } from './connectors/types.js';
 import { recordEvent } from './events.js';
+import { hostsForCertificate } from './hosts.js';
 import { getIdentityTemplate } from './identities.js';
 import { completeJob, enqueueJob, failJob, hasActiveRenewalJob, markJobRunning, releaseCertLock, tryAcquireCertLock } from './jobs.js';
 import { emitNotification } from './notifications.js';
@@ -139,6 +139,7 @@ export function queueRenewal(certId: string, input: StartRenewalInput): Job {
     type: 'renewal',
     certificateId: certId,
     payload: { ...input, certificateId: certId },
+    priority: 10,
   });
 }
 
@@ -155,6 +156,7 @@ export async function startRenewal(certId: string, input: StartRenewalInput): Pr
     type: 'renewal',
     certificateId: certId,
     payload: { ...input, certificateId: certId },
+    priority: 10,
   });
   markJobRunning(job.id);
   try {
@@ -189,10 +191,12 @@ async function afterSuccessfulRenewal(renewal: Renewal, input: StartRenewalInput
   }
   const pipelineId = input.pipelineId ?? blueprint?.pipelineId ?? null;
   if (pipelineId && renewal.status === 'completed') {
+    const hosts = hostsForCertificate(renewal.certificateId);
     await executePipeline({
       pipelineId,
       certificateId: renewal.certificateId,
       renewalId: renewal.id,
+      hostId: hosts[0]?.id ?? null,
       params: {
         requiresApproval: blueprint?.renewalPolicy.requiresApproval ?? false,
       },
@@ -310,16 +314,22 @@ async function executeRenewalBody(certId: string, input: StartRenewalInput): Pro
   }
 
   try {
-    let leafPem: string;
-    let chainPems: string[] = [];
-    if (input.method === 'internal-ca') {
-      leafPem = await signWithCa(csrPem, { days: validityDays }, log);
-      const ca = await readCaCert();
-      if (ca) chainPems = [ca];
-    } else {
-      leafPem = await selfSign(csrPem, keyPem, validityDays, log);
-    }
-    return await finaliseRenewal(id, leafPem, chainPems, keyPem, log);
+    const blueprint = cert.blueprintId ? getBlueprint(cert.blueprintId) : null;
+    const connector = selectIssuanceConnector({
+      method: input.method,
+      caTemplate: blueprint?.caTemplate,
+      policy: blueprint?.renewalPolicy as PolicyConnectorExtras,
+    });
+    const issued = await connector.issue({
+      csrPem,
+      keyPem,
+      days: validityDays,
+      commonName: input.commonName ?? parsedLeaf.commonName,
+      sans,
+      template: blueprint?.caTemplate,
+      log,
+    });
+    return await finaliseRenewal(id, issued.leafPem, issued.chainPems, keyPem, log);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     db().prepare('UPDATE renewals SET status = ?, error = ?, commands = ?, completed_at = ? WHERE id = ?').run('failed', msg, JSON.stringify(log.commands), nowIso(), id);
