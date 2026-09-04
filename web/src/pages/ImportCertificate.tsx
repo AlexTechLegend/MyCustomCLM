@@ -146,7 +146,7 @@ export function ImportCertificate() {
           </Card>
           <Card className="bg-ink-50/60">
             <h3 className="text-[13px] font-semibold text-ink-800 mb-2">What happens on import</h3>
-            <ol className="text-[13px] text-ink-600 space-y-1.5 list-decimal pl-4">
+            <ol className="font-prose text-[13px] text-ink-600 space-y-1.5 list-decimal pl-4">
               <li>PKCS#12 archives are unpacked with <code className="font-mono text-[12px]">openssl pkcs12</code> (legacy RC2 files are handled automatically).</li>
               <li>The certificate matching the private key becomes the leaf; the rest are ordered into a chain.</li>
               <li>Everything is normalised to PEM and stored in the vault with the key at 0600.</li>

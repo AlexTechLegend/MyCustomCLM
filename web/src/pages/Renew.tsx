@@ -485,7 +485,7 @@ function RenewForm({ cert }: { cert: Certificate }) {
           </Card>
           <Card>
             <CardHeader title="What will happen" />
-            <ol className="text-[13px] text-ink-700 space-y-2 list-decimal pl-4">
+            <ol className="font-prose text-[13px] text-ink-700 space-y-2 list-decimal pl-4">
               <li>{keyMode === 'reuse' ? 'Reuse the vaulted private key.' : `Generate a new ${keyMode.toUpperCase().replace('-', ' ')} key with openssl genpkey.`}</li>
               <li>Build a CSR for {commonName || 'this certificate'} with {sans.length} SAN{sans.length === 1 ? '' : 's'}.</li>
               {method === 'internal-ca' && <li>Sign it with the internal CA for {validityDays} days.</li>}
