@@ -212,3 +212,20 @@ export const DEFAULT_SETTINGS: Settings = {
   criticalThresholdDays: 7,
   defaultValidityDays: 397,
 };
+
+export type UserRole = 'viewer' | 'operator' | 'approver' | 'admin';
+
+export const USER_ROLES: UserRole[] = ['viewer', 'operator', 'approver', 'admin'];
+
+export interface User {
+  id: string;
+  username: string;
+  displayName: string;
+  email: string;
+  role: UserRole;
+  source: 'local' | 'ldap';
+  scopeTags: string[];
+  isActive: boolean;
+  lastLoginAt: string | null;
+  createdAt: string;
+}

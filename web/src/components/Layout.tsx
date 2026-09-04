@@ -317,8 +317,8 @@ export function Layout() {
             <Logo />
           </div>
         )}
-        <HealthStrip onOpenDiagnostics={() => setDiagnostics(true)} />
-        <div className="max-w-[1280px] mx-auto px-8 py-9">
+        {!location.pathname.startsWith('/dashboard/builder') && <HealthStrip onOpenDiagnostics={() => setDiagnostics(true)} />}
+        <div className={location.pathname.startsWith('/dashboard/builder') ? 'px-6 py-6' : 'max-w-[1280px] mx-auto px-8 py-9'}>
           <Outlet />
         </div>
       </main>

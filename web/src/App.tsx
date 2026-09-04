@@ -9,6 +9,7 @@ import { CertificateDetail } from './pages/CertificateDetail';
 import { Certificates } from './pages/Certificates';
 import { Credentials } from './pages/Credentials';
 import { Dashboard } from './pages/Dashboard';
+import { DashboardBuilder } from './pages/DashboardBuilder';
 import { Hosts } from './pages/Hosts';
 import { ImportCertificate } from './pages/ImportCertificate';
 import { Jobs } from './pages/Jobs';
@@ -30,6 +31,7 @@ export default function App() {
     <Routes>
       <Route element={<Layout />}>
         <Route index element={<Dashboard />} />
+        <Route path="dashboard/builder" element={<DashboardBuilder />} />
         <Route path="certificates" element={<Certificates />} />
         <Route path="certificates/import" element={<ImportCertificate />} />
         <Route path="certificates/:id" element={<CertificateDetail />} />

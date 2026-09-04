@@ -462,6 +462,12 @@ function migrate(d: Db) {
     );
     CREATE INDEX IF NOT EXISTS idx_discovery_scan ON discovery_results(scan_id);
     CREATE INDEX IF NOT EXISTS idx_discovery_fp ON discovery_results(fingerprint_sha256);
+
+    CREATE TABLE IF NOT EXISTS dashboard_template_store (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      payload TEXT NOT NULL DEFAULT '{}',
+      updated_at TEXT NOT NULL
+    );
   `);
   // Additive migrations for databases created before these columns existed.
   ensureColumn(d, 'certificates', 'destination_override', "TEXT NOT NULL DEFAULT ''");

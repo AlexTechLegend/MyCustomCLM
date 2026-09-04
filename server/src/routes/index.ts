@@ -3,6 +3,7 @@ import { authMiddleware, requestContext, viewerReadOnly } from '../services/auth
 import { authRoutes } from './auth.routes.js';
 import { blueprintsRoutes } from './blueprints.routes.js';
 import { catalogRoutes } from './catalog.routes.js';
+import { dashboardRoutes } from './dashboard.routes.js';
 import { certificatesRoutes } from './certificates.routes.js';
 import { credentialsRoutes } from './credentials.routes.js';
 import { healthRoutes } from './health.routes.js';
@@ -29,6 +30,7 @@ api.use(viewerReadOnly);
 api.use(healthRoutes);
 api.use(systemRoutes);
 api.use(catalogRoutes);
+api.use(dashboardRoutes);
 api.use(certificatesRoutes);
 api.use(renewalsRoutes);
 api.use(settingsRoutes);
