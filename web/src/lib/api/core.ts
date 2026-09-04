@@ -1,28 +1,6 @@
 import type { AutomationEvent, Certificate, DetectedFormat, IdentityTemplate, OutputSpec, Profile, Renewal, Settings, TagGroup } from '@/types';
-
-export class ApiError extends Error {
-  constructor(message: string, public status: number, public command?: string, public stderr?: string) {
-    super(message);
-  }
-}
-
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, init);
-  if (res.status === 204) return undefined as T;
-  const ct = res.headers.get('content-type') ?? '';
-  const body = ct.includes('application/json') ? await res.json() : await res.text();
-  if (!res.ok) {
-    const msg = typeof body === 'object' && body?.error ? body.error : `Request failed (${res.status})`;
-    throw new ApiError(msg, res.status, body?.command, body?.stderr);
-  }
-  return body as T;
-}
-
-const json = (method: string, data: unknown): RequestInit => ({
-  method,
-  headers: { 'content-type': 'application/json' },
-  body: JSON.stringify(data),
-});
+import type { Host } from '@/types/automation';
+import { json, request } from './client';
 
 export interface DashboardData {
   counts: { total: number; healthy: number; expiring: number; critical: number; expired: number; withoutKey: number; withoutProfile: number };
@@ -51,6 +29,7 @@ export interface CertificateDetail {
   renewals: Renewal[];
   events: AutomationEvent[];
   profiles: Profile[];
+  hosts?: Host[];
 }
 
 export interface CaInfo {
