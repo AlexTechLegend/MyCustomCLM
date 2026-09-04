@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import {
   AutomationCoverageTile,
   ConversionVolumeTile,
@@ -15,16 +16,41 @@ import { CalendarMiniTile } from './CalendarMiniTile';
 import {
   ExpiringSoonTile,
   ExpiryHorizonTile,
-  FleetHealthTile,
   IssuersTile,
   OverviewStatsTile,
   RecentActivityTile,
-  TimeReclaimedTile,
 } from './core';
 import type { ReactNode } from 'react';
 import type { TileContext, TileDef } from './types';
 
 type Size = Pick<TileDef, 'defaultW' | 'defaultH' | 'minW' | 'minH' | 'preview'>;
+
+// FleetHealthTile and TimeReclaimedTile pull in Recharts (~110kB gzip). The
+// dashboard is the app's eager first-load route, so these two are loaded on
+// demand instead — the grid cell already has a fixed pixel height (see
+// GridTile), so the skeleton fallback below needs no explicit sizing.
+const LazyFleetHealthTile = lazy(() => import('./coreCharts').then((m) => ({ default: m.FleetHealthTile })));
+const LazyTimeReclaimedTile = lazy(() => import('./coreCharts').then((m) => ({ default: m.TimeReclaimedTile })));
+
+function ChartTileFallback() {
+  return <div className="card h-full animate-pulse" />;
+}
+
+function FleetHealthTile(ctx: TileContext): ReactNode {
+  return (
+    <Suspense fallback={<ChartTileFallback />}>
+      <LazyFleetHealthTile {...ctx} />
+    </Suspense>
+  );
+}
+
+function TimeReclaimedTile(ctx: TileContext): ReactNode {
+  return (
+    <Suspense fallback={<ChartTileFallback />}>
+      <LazyTimeReclaimedTile {...ctx} />
+    </Suspense>
+  );
+}
 
 /** [defaultW, defaultH, minW, minH, preview] — widths in 12-column units, heights in rows. */
 function size(defaultW: number, defaultH: number, minW: number, minH: number, preview: TileDef['preview']): Size {
