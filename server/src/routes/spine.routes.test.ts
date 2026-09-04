@@ -104,8 +104,9 @@ describe('Task 8 spine routes', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ params: {} }),
     });
-    assert.equal(res.status, 200, await res.text());
-    const report = (await res.json()) as { ok: boolean; checks: { name: string }[]; transport: string };
+    const raw = await res.text();
+    assert.equal(res.status, 200, raw);
+    const report = JSON.parse(raw) as { ok: boolean; checks: { name: string }[]; transport: string };
     assert.equal(typeof report.ok, 'boolean');
     assert.ok(report.checks.some((c) => c.name === 'transport'));
     assert.equal(report.transport, 'local');
