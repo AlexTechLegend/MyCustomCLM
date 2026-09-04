@@ -1,9 +1,10 @@
+import { ttlMemo } from '../lib/memo.js';
 import { listCertificates } from './certificates.js';
 import { listEvents, timeSavedSummary } from './events.js';
 import { listProfiles } from './profiles.js';
 import { getSettings } from './settings.js';
 
-export function dashboard() {
+function computeDashboard() {
   const certs = listCertificates({ sort: 'expiry' });
   const settings = getSettings();
   const counts = { total: certs.length, healthy: 0, expiring: 0, critical: 0, expired: 0, withoutKey: 0, withoutProfile: 0 };
@@ -37,3 +38,8 @@ export function dashboard() {
     settings: { organisation: settings.organisation, expiringThresholdDays: settings.expiringThresholdDays, criticalThresholdDays: settings.criticalThresholdDays },
   };
 }
+
+// 5s TTL: cheap enough that a stale expiry count is never noticed, and it
+// collapses the health strip's 30s poll plus a concurrently open dashboard
+// page plus a second browser tab into a single computation.
+export const dashboard = ttlMemo(computeDashboard, 5_000);

@@ -14,7 +14,7 @@ import {
 import { getCertificateSchedule } from '../services/blueprints.js';
 import { listEvents } from '../services/events.js';
 import { hostsForCertificate, setCertificateHosts } from '../services/hosts.js';
-import { getProfile } from '../services/profiles.js';
+import { getProfiles } from '../services/profiles.js';
 import { listRenewals, startRenewal } from '../services/renewals.js';
 import { getSettings } from '../services/settings.js';
 import { writeAudit } from '../services/audit.js';
@@ -86,7 +86,7 @@ certificatesRoutes.get(
       renewals: listRenewals(cert.id),
       events: listEvents({ certificateId: cert.id, limit: 50 }),
       hosts: hostsForCertificate(cert.id),
-      profiles: cert.profileIds.map((id) => getProfile(id)).filter(Boolean),
+      profiles: getProfiles(cert.profileIds),
     });
   }),
 );

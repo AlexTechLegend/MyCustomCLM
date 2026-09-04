@@ -1,4 +1,5 @@
 import { db, newId, nowIso, parseJson } from '../db.js';
+import { ttlMemo } from '../lib/memo.js';
 import type { TagGroup } from '../types.js';
 import { listCertificates } from './certificates.js';
 
@@ -41,7 +42,7 @@ export function normaliseTagList(tags: string[]): string[] {
 }
 
 /** All unique tags currently in use across certificates, sorted. */
-export function listDistinctTags(): { tag: string; count: number }[] {
+function computeDistinctTags(): { tag: string; count: number }[] {
   const counts = new Map<string, { tag: string; count: number }>();
   for (const c of listCertificates()) {
     for (const raw of c.tags) {
@@ -55,6 +56,12 @@ export function listDistinctTags(): { tag: string; count: number }[] {
   }
   return [...counts.values()].sort((a, b) => a.tag.localeCompare(b.tag));
 }
+
+// Same reasoning as services/dashboard.ts: a full certificates scan on every
+// call, hit by every page that shows a tag filter, so a short TTL collapses
+// concurrent callers without needing write-invalidation wired through every
+// mutation route.
+export const listDistinctTags = ttlMemo(computeDistinctTags, 5_000);
 
 export function listTagGroups(): TagGroup[] {
   const rows = db().prepare('SELECT * FROM tag_groups ORDER BY name COLLATE NOCASE').all() as GroupRow[];

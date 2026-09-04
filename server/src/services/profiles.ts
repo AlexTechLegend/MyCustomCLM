@@ -64,6 +64,26 @@ export function getProfile(id: string): Profile | null {
   return row ? withCounts([mapRow(row)])[0] : null;
 }
 
+/**
+ * Batched form of getProfile for the common "resolve a certificate's linked
+ * profile ids" case. A single `WHERE id IN (...)` plus one certificateCount
+ * pass, instead of N round trips each re-scanning the whole certificates
+ * table via withCounts -- see certificates.routes.ts and renewals.ts, which
+ * both previously did `profileIds.map((id) => getProfile(id))`. Order
+ * follows the input array; unknown ids are silently dropped, matching the
+ * `.filter(Boolean)` the two call sites already did.
+ */
+export function getProfiles(ids: string[]): Profile[] {
+  const unique = [...new Set(ids)];
+  if (!unique.length) return [];
+  const placeholders = unique.map(() => '?').join(',');
+  const rows = db()
+    .prepare(`SELECT * FROM profiles WHERE id IN (${placeholders})`)
+    .all(...unique) as ProfileRow[];
+  const byId = new Map(withCounts(rows.map(mapRow)).map((p) => [p.id, p]));
+  return ids.map((id) => byId.get(id)).filter((p): p is Profile => !!p);
+}
+
 export function normaliseSpec(input: Partial<OutputSpec>, existing?: OutputSpec): OutputSpec {
   const format = input.format ?? existing?.format ?? 'pem-cert';
   const lineEnding = input.lineEnding === 'crlf' ? 'crlf' : 'lf';

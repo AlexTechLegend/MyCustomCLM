@@ -20,7 +20,7 @@ import {
   type SubjectOverrides,
   type UploadedFile,
 } from '../openssl.js';
-import type { Certificate, Job, KeyMode, Profile, Renewal, RenewalMethod, RenewalOutput, RenewalStatus } from '../types.js';
+import type { Certificate, Job, KeyMode, Renewal, RenewalMethod, RenewalOutput, RenewalStatus } from '../types.js';
 import { writeAudit } from './audit.js';
 import { getBlueprint, computeNextRenewalAt } from './blueprints.js';
 import { getCertificate, readVault, replaceCertificateMaterial, setCertificateNextRenewal } from './certificates.js';
@@ -32,7 +32,7 @@ import { getIdentityTemplate } from './identities.js';
 import { completeJob, enqueueJob, failJob, hasActiveRenewalJob, markJobRunning, releaseCertLock, tryAcquireCertLock } from './jobs.js';
 import { emitNotification } from './notifications.js';
 import { executePipeline } from './pipelines.js';
-import { getProfile } from './profiles.js';
+import { getProfiles } from './profiles.js';
 import { getSettings } from './settings.js';
 
 interface RenewalRow {
@@ -376,7 +376,7 @@ async function finaliseRenewal(renewalId: string, leafPem: string, chainPems: st
   const source = renewal.method === 'internal-ca' ? 'internal-ca' : renewal.method === 'self-signed' ? 'self-signed' : 'external-ca';
   const updated = (await replaceCertificateMaterial(cert.id, material, source)) as Certificate;
 
-  const profiles = renewal.profileIds.map((id) => getProfile(id)).filter((p): p is Profile => !!p);
+  const profiles = getProfiles(renewal.profileIds);
   const outputs: RenewalOutput[] = [];
   const dir = renewalDir(renewalId);
   const tokens = { cn: leaf.commonName, serial: leaf.serial, date: new Date(), profile: '' };
