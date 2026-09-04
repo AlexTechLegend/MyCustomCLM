@@ -1,23 +1,23 @@
-export type Theme = 'light' | 'dark' | 'system';
+export type Theme = 'light' | 'dark';
 
 export const THEME_STORAGE_KEY = 'vigil:theme';
-
-const THEMES: Theme[] = ['light', 'dark', 'system'];
 
 export function readTheme(): Theme {
   try {
     const stored = localStorage.getItem(THEME_STORAGE_KEY);
-    if (stored === 'light' || stored === 'dark' || stored === 'system') return stored;
+    if (stored === 'light' || stored === 'dark') return stored;
+    // One-time migration from the old "system" value.
+    if (stored === 'system' && typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches) {
+      return 'dark';
+    }
   } catch {
-    // Private mode / blocked storage — fall through to system.
+    // Private mode / blocked storage.
   }
-  return 'system';
+  return 'light';
 }
 
 export function applyTheme(theme: Theme): void {
-  const root = document.documentElement;
-  if (theme === 'system') root.removeAttribute('data-theme');
-  else root.setAttribute('data-theme', theme);
+  document.documentElement.setAttribute('data-theme', theme);
 }
 
 export function persistTheme(theme: Theme): void {
@@ -30,5 +30,5 @@ export function persistTheme(theme: Theme): void {
 }
 
 export function cycleTheme(current: Theme): Theme {
-  return THEMES[(THEMES.indexOf(current) + 1) % THEMES.length] ?? 'system';
+  return current === 'light' ? 'dark' : 'light';
 }

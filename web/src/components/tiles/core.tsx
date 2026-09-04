@@ -76,7 +76,7 @@ export function ExpiringSoonTile({ dashboard }: TileContext) {
       ) : (
         <ul className="divide-y divide-ink-100">
           {expiringSoon.map((c) => (
-            <li key={c.id} className="px-6 py-3.5 flex items-center gap-5 hover:bg-ink-50/60 transition-colors">
+            <li key={c.id} className="px-6 py-2.5 flex items-center gap-5 hover:bg-ink-50/60 transition-colors">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2.5">
                   <Link to={`/certificates/${c.id}`} className="text-sm font-medium text-ink-950 hover:text-brand-700 truncate">

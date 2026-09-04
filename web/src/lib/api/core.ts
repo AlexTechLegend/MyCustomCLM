@@ -1,28 +1,6 @@
-import type { AutomationEvent, Certificate, DetectedFormat, IdentityTemplate, OutputSpec, Profile, Renewal, Settings, TagGroup } from '@/types';
-
-export class ApiError extends Error {
-  constructor(message: string, public status: number, public command?: string, public stderr?: string) {
-    super(message);
-  }
-}
-
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, init);
-  if (res.status === 204) return undefined as T;
-  const ct = res.headers.get('content-type') ?? '';
-  const body = ct.includes('application/json') ? await res.json() : await res.text();
-  if (!res.ok) {
-    const msg = typeof body === 'object' && body?.error ? body.error : `Request failed (${res.status})`;
-    throw new ApiError(msg, res.status, body?.command, body?.stderr);
-  }
-  return body as T;
-}
-
-const json = (method: string, data: unknown): RequestInit => ({
-  method,
-  headers: { 'content-type': 'application/json' },
-  body: JSON.stringify(data),
-});
+import type { AutomationEvent, Certificate, DetectedFormat, IdentityTemplate, OutputSpec, Profile, Renewal, Settings, TagGroup, User, UserRole } from '@/types';
+import type { Host } from '@/types/automation';
+import { json, request } from './client';
 
 export interface DashboardData {
   counts: { total: number; healthy: number; expiring: number; critical: number; expired: number; withoutKey: number; withoutProfile: number };
@@ -51,6 +29,7 @@ export interface CertificateDetail {
   renewals: Renewal[];
   events: AutomationEvent[];
   profiles: Profile[];
+  hosts?: Host[];
 }
 
 export interface CaInfo {
@@ -139,6 +118,22 @@ export const api = {
 
   settings: () => request<Settings>('/api/settings'),
   saveSettings: (s: Partial<Settings>) => request<Settings>('/api/settings', json('PUT', s)),
+  me: () => request<{ user: User | null; authEnabled: boolean }>('/api/auth/me'),
+  users: () => request<User[]>('/api/users'),
+  dashboardTemplates: () =>
+    request<{
+      templates: { id: string; name: string; layout: { version: 2; cols: 12 | 24 | 36; rows: number; items: { id: string; x: number; y: number; w: number; h: number }[] } }[];
+      roleAssignments: Partial<Record<UserRole, string>>;
+      userAssignments: Record<string, string>;
+      defaultId: string;
+      resolvedId: string;
+    }>('/api/dashboard-templates'),
+  saveDashboardTemplates: (body: {
+    templates: { id: string; name: string; layout: unknown }[];
+    roleAssignments: Partial<Record<UserRole, string>>;
+    userAssignments: Record<string, string>;
+    defaultId: string;
+  }) => request<typeof body & { resolvedId: string }>('/api/dashboard-templates', json('PUT', body)),
   ca: () => request<CaInfo>('/api/ca'),
   createCa: (body: { commonName: string; organisation: string; days: number }) => request<{ ok: true }>('/api/ca', json('POST', body)),
   deleteCa: () => request<void>('/api/ca', { method: 'DELETE' }),

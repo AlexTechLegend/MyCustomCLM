@@ -64,7 +64,7 @@ export function BulkBar({
   return (
     <>
       <div className="sticky bottom-4 z-20 mt-4">
-        <div className="card px-4 py-3 flex flex-wrap items-center gap-3 shadow-lg shadow-ink-950/10">
+        <div className="card px-4 py-3 flex flex-wrap items-center gap-3 shadow-lg shadow-black/15">
           <div className="text-sm font-medium text-ink-950 tnum">
             {selectedCount} selected
             {allMatching && <span className="ml-1.5 font-normal text-ink-500">· all {matchingCount} matching</span>}

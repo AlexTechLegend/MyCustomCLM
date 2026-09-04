@@ -30,7 +30,7 @@ export function SetupChecklist({
       <ol className="space-y-2">
         {steps.map((s, i) => (
           <li key={s.id}>
-            <Link to={s.to} className="flex items-start gap-3 rounded-xl px-2 py-2 hover:bg-white/60">
+            <Link to={s.to} className="flex items-start gap-3 rounded-xl px-2 py-2 hover:bg-canvas">
               {s.done ? <CheckCircle2 className="size-4 text-ok-600 mt-0.5" /> : <Circle className="size-4 text-ink-300 mt-0.5" />}
               <span>
                 <span className="block text-sm font-medium text-ink-950">

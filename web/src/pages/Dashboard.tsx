@@ -1,44 +1,55 @@
 import { useQuery } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
-import { DashboardGrid } from '@/components/DashboardGrid';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { GridCanvas } from '@/components/dashboard/GridCanvas';
+import { useGridInteraction } from '@/components/dashboard/useGridInteraction';
+import { StackedTiles, useIsLgUp } from '@/components/DashboardGrid';
 import { SetupChecklist, type SetupStep } from '@/components/SetupChecklist';
+import type { TileContext } from '@/components/tiles/types';
 import { Button, ErrorBox, Loading, PageHeader, Select } from '@/components/ui';
+import { api } from '@/lib/api';
 import {
-  activeDashboardId,
   allDashboards,
-  defaultDashboardId,
-  deleteDashboard,
+  findDashboard,
   loadLayout,
+  mergeServerTemplates,
   persistLayout,
-  resetLayout,
-  saveNamedDashboard,
+  resolveDashboardId,
   setActiveDashboard,
-  setDefaultDashboard,
   setupDismissed,
   setSetupDismissed,
-  type LayoutItem,
+  type DashboardLayout,
 } from '@/lib/dashboardStore';
-import { api } from '@/lib/api';
-import type { TileContext } from '@/components/tiles/types';
 
 export function Dashboard() {
+  const navigate = useNavigate();
+  const lgUp = useIsLgUp();
+
   const dash = useQuery({ queryKey: ['dashboard'], queryFn: api.dashboard, refetchInterval: 60_000 });
   const certs = useQuery({ queryKey: ['certificates', {}], queryFn: () => api.certificates({}) });
   const profiles = useQuery({ queryKey: ['profiles'], queryFn: () => api.profiles() });
   const renewals = useQuery({ queryKey: ['renewals'], queryFn: api.renewals });
   const activity = useQuery({ queryKey: ['activity', 'all'], queryFn: () => api.activity() });
   const ca = useQuery({ queryKey: ['ca'], queryFn: api.ca });
+  const me = useQuery({ queryKey: ['auth-me'], queryFn: api.me });
+  const remote = useQuery({ queryKey: ['dashboard-templates'], queryFn: api.dashboardTemplates });
 
-  const [items, setItems] = useState<LayoutItem[]>(() => loadLayout());
-  const [editing, setEditing] = useState(false);
-  const [activeId, setActiveId] = useState(activeDashboardId);
-  const [nameDraft, setNameDraft] = useState('');
+  const [layout, setLayout] = useState<DashboardLayout>(() => loadLayout());
+  const [activeId, setActiveId] = useState(() => resolveDashboardId(null));
   const [hiddenSetup, setHiddenSetup] = useState(setupDismissed);
+  const grid = useGridInteraction({ layout, onChange: () => undefined });
 
-  const updateItems = (next: LayoutItem[]) => {
-    setItems(next);
-    persistLayout(next);
-  };
+  useEffect(() => {
+    if (!remote.data) return;
+    mergeServerTemplates(remote.data);
+    const id = remote.data.resolvedId || resolveDashboardId(me.data?.user);
+    const dash = findDashboard(id);
+    if (dash) {
+      setActiveId(id);
+      setLayout({ ...dash.layout, items: dash.layout.items.map((i) => ({ ...i })) });
+      persistLayout(dash.layout);
+    }
+  }, [remote.data, me.data?.user]);
 
   const ctx: TileContext | null = useMemo(() => {
     if (!dash.data) return null;
@@ -88,10 +99,9 @@ export function Dashboard() {
   const setupComplete = steps.every((s) => s.done);
   const showSetup = !hiddenSetup || !setupComplete;
   const emptyFleet = dash.data.counts.total === 0;
-
   const dashboards = allDashboards();
-  const isDefault = defaultDashboardId() === activeId;
   const current = dashboards.find((d) => d.id === activeId);
+  const canPick = !me.data?.authEnabled || me.data.user?.role === 'admin';
 
   return (
     <>
@@ -107,26 +117,27 @@ export function Dashboard() {
         }
         actions={
           <>
-            <Select
-              value={activeId}
-              className="h-9 w-44"
-              onChange={(e) => {
-                setActiveId(e.target.value);
-                updateItems(setActiveDashboard(e.target.value));
-              }}
-            >
-              {dashboards.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}{d.id === defaultDashboardId() ? ' (default)' : ''}
-                </option>
-              ))}
-            </Select>
-            <Button variant="ghost" size="sm" onClick={() => setEditing((v) => !v)}>
-              {editing ? 'Done' : 'Edit layout'}
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => updateItems(resetLayout())}>
-              Reset to default
-            </Button>
+            {canPick && (
+              <>
+                <Select
+                  value={activeId}
+                  className="h-9 w-44"
+                  onChange={(e) => {
+                    setActiveId(e.target.value);
+                    setLayout(setActiveDashboard(e.target.value));
+                  }}
+                >
+                  {dashboards.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </Select>
+                <Button variant="secondary" size="sm" disabled={!lgUp} title={lgUp ? undefined : 'The builder needs a wider window'} onClick={() => navigate('/dashboard/builder')}>
+                  Edit layout
+                </Button>
+              </>
+            )}
           </>
         }
       />
@@ -146,45 +157,31 @@ export function Dashboard() {
         />
       )}
 
-      {editing && (
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          <input
-            value={nameDraft}
-            onChange={(e) => setNameDraft(e.target.value)}
-            placeholder="Name this dashboard"
-            className="h-9 rounded-xl border border-ink-200 bg-surface px-3 text-sm"
-          />
-          <Button
-            size="sm"
-            disabled={!nameDraft.trim()}
-            onClick={() => {
-              const saved = saveNamedDashboard(nameDraft, items);
-              setActiveId(saved.id);
-              setNameDraft('');
-            }}
-          >
-            Save
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setDefaultDashboard(activeId)}>
-            {isDefault ? 'Default dashboard' : 'Set as default'}
-          </Button>
-          {current && !current.builtin && (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                deleteDashboard(current.id);
-                setActiveId('default');
-                updateItems(setActiveDashboard('default'));
-              }}
-            >
-              Delete
-            </Button>
-          )}
-        </div>
+      {!lgUp && <p className="mb-4 text-[13px] text-text-soft">Tiles are stacked for this window size. Widen the window to use the dashboard builder.</p>}
+
+      {current && !canPick && (
+        <p className="mb-4 text-[12px] text-text-soft">
+          Showing “{current.name}” — assigned to {me.data?.user?.role ?? 'this session'}.
+        </p>
       )}
 
-      {(!emptyFleet || editing) && <DashboardGrid items={items} ctx={ctx} editing={editing} onChange={updateItems} />}
+      {(!emptyFleet || layout.items.length > 0) &&
+        (lgUp ? (
+          <GridCanvas
+            layout={layout}
+            ctx={ctx}
+            editing={false}
+            canvasRef={grid.canvasRef}
+            canvasWidth={grid.canvasWidth}
+            cellW={grid.cellW}
+            interaction={grid.interaction}
+            startMove={() => undefined}
+            startResize={() => undefined}
+            onChange={() => undefined}
+          />
+        ) : (
+          <StackedTiles layout={layout} ctx={ctx} />
+        ))}
     </>
   );
 }

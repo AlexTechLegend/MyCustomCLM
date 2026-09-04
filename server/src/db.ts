@@ -19,6 +19,7 @@ const require = createRequire(import.meta.url);
 
 let _db: Db | null = null;
 let _backend: string | null = null;
+let _close: (() => void) | null = null;
 
 export function dbBackend() {
   return _backend;
@@ -30,11 +31,12 @@ export function db(): Db {
   const opened = openDatabase(config.dbPath);
   _db = opened.db;
   _backend = opened.backend;
+  _close = opened.close;
   migrate(_db);
   return _db;
 }
 
-function openDatabase(dbPath: string): { db: Db; backend: string } {
+function openDatabase(dbPath: string): { db: Db; backend: string; close: () => void } {
   // Prefer better-sqlite3: works on Node 20+ with prebuilt binaries (incl. Windows).
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -46,11 +48,12 @@ function openDatabase(dbPath: string): { db: Db; backend: string } {
         all(...p: unknown[]): unknown[];
       };
       pragma(p: string): unknown;
+      close(): void;
     };
     const raw = new Database(dbPath);
     raw.pragma('journal_mode = WAL');
     raw.pragma('foreign_keys = ON');
-    return { db: wrapBetter(raw), backend: 'better-sqlite3' };
+    return { db: wrapBetter(raw), backend: 'better-sqlite3', close: () => raw.close() };
   } catch (betterErr) {
     // Fall back to Node's built-in sqlite (Node 22.5+).
     try {
@@ -67,10 +70,10 @@ function openDatabase(dbPath: string): { db: Db; backend: string } {
           };
         };
       };
-      const raw = new DatabaseSync(dbPath);
+      const raw = new DatabaseSync(dbPath) as { exec(sql: string): void; prepare(sql: string): { run(...p: unknown[]): { changes: number | bigint; lastInsertRowid: number | bigint }; get(...p: unknown[]): unknown; all(...p: unknown[]): unknown[] }; close?: () => void };
       raw.exec('PRAGMA journal_mode = WAL');
       raw.exec('PRAGMA foreign_keys = ON');
-      return { db: wrapNamed(raw), backend: 'node:sqlite' };
+      return { db: wrapNamed(raw), backend: 'node:sqlite', close: () => raw.close?.() };
     } catch (sqliteErr) {
       const betterMsg = betterErr instanceof Error ? betterErr.message : String(betterErr);
       const sqliteMsg = sqliteErr instanceof Error ? sqliteErr.message : String(sqliteErr);
@@ -264,12 +267,220 @@ function migrate(d: Db) {
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS jobs (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      payload TEXT NOT NULL DEFAULT '{}',
+      state TEXT NOT NULL DEFAULT 'queued',
+      priority INTEGER NOT NULL DEFAULT 100,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      max_attempts INTEGER NOT NULL DEFAULT 5,
+      lease_owner TEXT,
+      lease_expires_at TEXT,
+      scheduled_for TEXT NOT NULL,
+      started_at TEXT,
+      finished_at TEXT,
+      error TEXT,
+      result TEXT,
+      certificate_id TEXT,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_jobs_state_sched ON jobs(state, scheduled_for);
+    CREATE INDEX IF NOT EXISTS idx_jobs_cert ON jobs(certificate_id);
+
+    CREATE TABLE IF NOT EXISTS hosts (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      hostname TEXT NOT NULL DEFAULT '',
+      address TEXT NOT NULL DEFAULT '',
+      platform TEXT NOT NULL DEFAULT 'other',
+      environment TEXT NOT NULL DEFAULT '',
+      owner TEXT NOT NULL DEFAULT '',
+      credential_id TEXT,
+      agent_status TEXT NOT NULL DEFAULT 'unknown',
+      agent_last_seen TEXT,
+      notes TEXT NOT NULL DEFAULT '',
+      tags TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS certificate_hosts (
+      certificate_id TEXT NOT NULL REFERENCES certificates(id) ON DELETE CASCADE,
+      host_id TEXT NOT NULL REFERENCES hosts(id) ON DELETE CASCADE,
+      PRIMARY KEY (certificate_id, host_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS credentials (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      username TEXT NOT NULL DEFAULT '',
+      secret_encrypted TEXT NOT NULL DEFAULT '',
+      secret_iv TEXT NOT NULL DEFAULT '',
+      secret_tag TEXT NOT NULL DEFAULT '',
+      description TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS pipelines (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      steps TEXT NOT NULL DEFAULT '[]',
+      is_builtin INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS pipeline_runs (
+      id TEXT PRIMARY KEY,
+      pipeline_id TEXT NOT NULL REFERENCES pipelines(id) ON DELETE CASCADE,
+      renewal_id TEXT,
+      certificate_id TEXT,
+      host_id TEXT,
+      state TEXT NOT NULL,
+      steps TEXT NOT NULL DEFAULT '[]',
+      params TEXT NOT NULL DEFAULT '{}',
+      approved_by TEXT,
+      approved_at TEXT,
+      started_at TEXT,
+      finished_at TEXT,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_pipeline_runs_state ON pipeline_runs(state);
+
+    CREATE TABLE IF NOT EXISTS blueprints (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      identity_template_id TEXT,
+      profile_ids TEXT NOT NULL DEFAULT '[]',
+      issuance_method TEXT NOT NULL DEFAULT 'internal-ca',
+      ca_template TEXT NOT NULL DEFAULT '',
+      key_mode TEXT NOT NULL DEFAULT 'rsa-2048',
+      validity_days INTEGER NOT NULL DEFAULT 397,
+      pipeline_id TEXT,
+      renewal_policy TEXT NOT NULL DEFAULT '{}',
+      maintenance_window_id TEXT,
+      notification_targets TEXT NOT NULL DEFAULT '[]',
+      version INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS maintenance_windows (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      weekday INTEGER NOT NULL,
+      start_time TEXT NOT NULL,
+      end_time TEXT NOT NULL,
+      timezone TEXT NOT NULL DEFAULT 'UTC',
+      recurrence TEXT NOT NULL DEFAULT 'weekly',
+      blackout_ranges TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      username TEXT NOT NULL UNIQUE,
+      display_name TEXT NOT NULL DEFAULT '',
+      email TEXT NOT NULL DEFAULT '',
+      password_hash TEXT NOT NULL DEFAULT '',
+      role TEXT NOT NULL DEFAULT 'viewer',
+      source TEXT NOT NULL DEFAULT 'local',
+      scope_tags TEXT NOT NULL DEFAULT '[]',
+      is_active INTEGER NOT NULL DEFAULT 1,
+      last_login_at TEXT,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS sessions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token_hash TEXT NOT NULL UNIQUE,
+      expires_at TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token_hash);
+
+    CREATE TABLE IF NOT EXISTS notification_targets (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      config TEXT NOT NULL DEFAULT '{}',
+      events TEXT NOT NULL DEFAULT '[]',
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id TEXT PRIMARY KEY,
+      actor_user_id TEXT,
+      actor_type TEXT NOT NULL,
+      action TEXT NOT NULL,
+      entity_type TEXT NOT NULL,
+      entity_id TEXT,
+      before_json TEXT,
+      after_json TEXT,
+      command_trail TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at);
+    CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_log(entity_type, entity_id);
+
+    CREATE TABLE IF NOT EXISTS certificate_locks (
+      certificate_id TEXT PRIMARY KEY REFERENCES certificates(id) ON DELETE CASCADE,
+      owner TEXT NOT NULL,
+      expires_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS instance_leases (
+      id TEXT PRIMARY KEY CHECK (id = 'scheduler'),
+      owner TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS discovery_results (
+      id TEXT PRIMARY KEY,
+      scan_id TEXT NOT NULL,
+      address TEXT NOT NULL,
+      port INTEGER NOT NULL,
+      hostname TEXT NOT NULL DEFAULT '',
+      subject TEXT NOT NULL DEFAULT '',
+      issuer TEXT NOT NULL DEFAULT '',
+      not_after TEXT,
+      fingerprint_sha256 TEXT NOT NULL DEFAULT '',
+      matched_certificate_id TEXT,
+      first_seen TEXT NOT NULL,
+      last_seen TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_discovery_scan ON discovery_results(scan_id);
+    CREATE INDEX IF NOT EXISTS idx_discovery_fp ON discovery_results(fingerprint_sha256);
+
+    CREATE TABLE IF NOT EXISTS dashboard_template_store (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      payload TEXT NOT NULL DEFAULT '{}',
+      updated_at TEXT NOT NULL
+    );
   `);
   // Additive migrations for databases created before these columns existed.
   ensureColumn(d, 'certificates', 'destination_override', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(d, 'certificates', 'blueprint_id', 'TEXT');
+  ensureColumn(d, 'certificates', 'blueprint_version', 'INTEGER');
+  ensureColumn(d, 'certificates', 'next_renewal_at', 'TEXT');
+  ensureColumn(d, 'certificates', 'blueprint_sans', "TEXT NOT NULL DEFAULT '[]'");
   ensureColumn(d, 'profiles', 'scope', "TEXT NOT NULL DEFAULT 'general'");
   ensureColumn(d, 'profiles', 'server_tags', "TEXT NOT NULL DEFAULT '[]'");
   ensureColumn(d, 'profiles', 'certificate_ids', "TEXT NOT NULL DEFAULT '[]'");
+  ensureColumn(d, 'hosts', 'transport', "TEXT NOT NULL DEFAULT 'none'");
+  ensureColumn(d, 'hosts', 'transport_config', "TEXT NOT NULL DEFAULT '{}'");
+  ensureColumn(d, 'hosts', 'agent_token_credential_id', 'TEXT');
 }
 
 function ensureColumn(d: Db, table: string, column: string, ddl: string) {
@@ -301,4 +512,16 @@ export function parseJson<T>(value: unknown, fallback: T): T {
 export function ensureDataDirWritable() {
   ensureDirs();
   fs.accessSync(config.dataDir, fs.constants.W_OK);
+}
+
+/** Close and drop the process-wide handle so the next db() opens config.dbPath again. */
+export function resetDbHandle() {
+  try {
+    _close?.();
+  } catch {
+    /* already closed */
+  }
+  _close = null;
+  _db = null;
+  _backend = null;
 }

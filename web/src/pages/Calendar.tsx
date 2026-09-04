@@ -3,9 +3,10 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, Card, ErrorBox, Loading, PageHeader } from '@/components/ui';
-import { api } from '@/lib/api';
+import { api, windowsApi } from '@/lib/api';
 import { STATUS_META } from '@/lib/format';
 import { dayKey } from '@/components/tiles/helpers';
+import { windowOnDay } from '@/lib/windowPreview';
 
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -31,6 +32,7 @@ export function Calendar() {
   const [mode, setMode] = useState<'month' | 'quarter'>('month');
   const [cursor, setCursor] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const certs = useQuery({ queryKey: ['certificates', { profileId: undefined, tag: undefined, groupId: undefined }], queryFn: () => api.certificates({}) });
+  const windows = useQuery({ queryKey: ['windows'], queryFn: windowsApi.list });
 
   const byDay = useMemo(() => {
     const map = new Map<string, typeof certs.data>();
@@ -38,6 +40,18 @@ export function Calendar() {
       const k = dayKey(c.notAfter);
       const list = map.get(k) ?? [];
       list.push(c);
+      map.set(k, list);
+    }
+    return map;
+  }, [certs.data]);
+
+  const renewByDay = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const c of certs.data ?? []) {
+      if (!c.nextRenewalAt) continue;
+      const k = dayKey(c.nextRenewalAt);
+      const list = map.get(k) ?? [];
+      list.push(c.name);
       map.set(k, list);
     }
     return map;
@@ -57,7 +71,7 @@ export function Calendar() {
     <>
       <PageHeader
         title="Expiry calendar"
-        description="One cell per day. Intensity is how many certificates expire that day. Maintenance windows will appear in the reserved lane once the scheduler ships."
+        description="One cell per day. Intensity is how many certificates expire that day. The reserved lane shows maintenance windows and computed next-renewal dates."
         actions={
           <div className="flex items-center gap-2">
             <Button size="sm" variant={mode === 'month' ? 'primary' : 'secondary'} onClick={() => setMode('month')}>
@@ -104,6 +118,8 @@ export function Calendar() {
               {monthCells(m.getFullYear(), m.getMonth()).map((cell) => {
                 if (!cell.date) return <div key={cell.key} />;
                 const list = byDay.get(cell.key) ?? [];
+                const winHits = (windows.data ?? []).filter((w) => windowOnDay(w, cell.date!));
+                const renewNames = renewByDay.get(cell.key) ?? [];
                 const weekend = cell.date.getDay() === 0 || cell.date.getDay() === 6;
                 const intensity = list.length ? Math.min(1, 0.18 + (list.length / max) * 0.82) : 0;
                 return (
@@ -128,13 +144,37 @@ export function Calendar() {
                       ))}
                       {list.length > 3 && <li className="text-[10px] text-ink-400">+{list.length - 3} more</li>}
                     </ul>
+                    {winHits.length > 0 && (
+                      <div className="mt-1 text-[10px] text-brand-600 truncate">{winHits.map((w) => w.name).join(', ')}</div>
+                    )}
+                    {renewNames.length > 0 && (
+                      <div className="text-[10px] text-ok-fg truncate">Renew {renewNames.length}</div>
+                    )}
                   </div>
                 );
               })}
             </div>
-            <div className="mx-3 mb-4 rounded-lg border border-dashed border-ink-200 px-3 py-2">
-              <div className="text-[11px] font-medium uppercase tracking-wide text-ink-400">Maintenance windows</div>
-              <p className="text-[12px] text-ink-500 mt-0.5">Not available yet — reserved for the scheduler.</p>
+            <div className="mx-3 mb-4 rounded-lg border border-dashed border-line px-3 py-2">
+              <div className="text-[11px] font-medium uppercase tracking-wide text-text-soft">Maintenance windows</div>
+              {(() => {
+                const monthWindows = (windows.data ?? []).filter((w) =>
+                  monthCells(m.getFullYear(), m.getMonth()).some((cell) => cell.date && windowOnDay(w, cell.date)),
+                );
+                const renewals = [...renewByDay.entries()].filter(([k]) => k.startsWith(`${m.getFullYear()}-${String(m.getMonth() + 1).padStart(2, '0')}`));
+                if (!monthWindows.length && !renewals.length) {
+                  return <p className="text-[12px] text-text-soft mt-0.5">No windows or scheduled renewals this month.</p>;
+                }
+                return (
+                  <ul className="mt-1 space-y-0.5 text-[12px] text-text-mid">
+                    {monthWindows.map((w) => (
+                      <li key={w.id}>{w.name} · {w.startTime}–{w.endTime} {w.timezone}</li>
+                    ))}
+                    {renewals.slice(0, 6).map(([k, names]) => (
+                      <li key={k} className="tnum">Renew {k}: {names.join(', ')}</li>
+                    ))}
+                  </ul>
+                );
+              })()}
             </div>
           </Card>
         ))}

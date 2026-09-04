@@ -103,7 +103,7 @@ function SortHeader({
 }) {
   const active = sort === column;
   return (
-    <th className={clsx('font-medium px-4 py-3', className)}>
+    <th className={clsx('font-medium px-4 py-2', className)}>
       <button
         type="button"
         onClick={() => onSort(column)}
@@ -313,14 +313,14 @@ export function Certificates() {
               key={v.id}
               className={clsx(
                 'inline-flex items-center gap-1 h-8 rounded-lg border px-2.5 text-[13px] font-medium',
-                active ? 'bg-brand-50 text-brand-800 border-brand-300' : 'bg-surface text-ink-600 border-ink-200',
+                active ? 'bg-brand-600 text-white border-brand-600' : 'bg-surface text-ink-700 border-line',
               )}
             >
-              <button type="button" onClick={() => applyView(v)} className="hover:text-ink-950">
+              <button type="button" onClick={() => applyView(v)} className={active ? 'hover:text-white' : 'hover:text-ink-950'}>
                 {v.name}
               </button>
               {!v.builtin && (
-                <button type="button" aria-label={`Delete view ${v.name}`} className="rounded p-0.5 text-ink-400 hover:text-ink-800" onClick={() => setDeleteViewTarget(v)}>
+                <button type="button" aria-label={`Delete view ${v.name}`} className={clsx('rounded p-0.5', active ? 'text-white/70 hover:text-white' : 'text-ink-400 hover:text-ink-800')} onClick={() => setDeleteViewTarget(v)}>
                   <X className="size-3" />
                 </button>
               )}
@@ -433,7 +433,7 @@ export function Certificates() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-[12px] uppercase tracking-wide text-ink-500 border-b border-ink-200">
-                  <th className="font-medium pl-6 pr-2 py-3 w-10">
+                  <th className="font-medium pl-6 pr-2 py-2 w-10">
                     <TableCheckbox
                       checked={allFilteredSelected}
                       indeterminate={someSelected && !allFilteredSelected}
@@ -444,16 +444,16 @@ export function Certificates() {
                   <SortHeader label="Certificate" column="name" sort={sort} dir={dir} onSort={onHeaderSort} className="pl-2" />
                   <SortHeader label="Issuer" column="issuer" sort={sort} dir={dir} onSort={onHeaderSort} />
                   <SortHeader label="Expires" column="expiry" sort={sort} dir={dir} onSort={onHeaderSort} className="w-[220px]" />
-                  <th className="font-medium px-4 py-3">Key</th>
-                  <th className="font-medium px-4 py-3">Profiles</th>
+                  <th className="font-medium px-4 py-2">Key</th>
+                  <th className="font-medium px-4 py-2">Profiles</th>
                   <SortHeader label="Status" column="status" sort={sort} dir={dir} onSort={onHeaderSort} />
-                  <th className="px-6 py-3" />
+                  <th className="px-6 py-2" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-ink-100">
                 {paged.map((c) => (
                   <tr key={c.id} className="hover:bg-ink-50/70 transition-colors group">
-                    <td className="pl-6 pr-2 py-3.5">
+                    <td className="pl-6 pr-2 py-2">
                       <TableCheckbox
                         checked={selected.has(c.id)}
                         onChange={(on) => {
@@ -467,7 +467,7 @@ export function Certificates() {
                         label={`Select ${c.name}`}
                       />
                     </td>
-                    <td className="px-2 py-3.5">
+                    <td className="px-2 py-2">
                       <Link to={`/certificates/${c.id}`} className="font-medium text-ink-950 hover:text-brand-700 block truncate max-w-[280px]">
                         {c.name}
                       </Link>
@@ -476,27 +476,27 @@ export function Certificates() {
                         {c.tags.length ? c.tags.join(', ') : SOURCE_LABEL[c.source]}
                       </div>
                     </td>
-                    <td className="px-4 py-3.5 text-ink-700 truncate max-w-[200px]">{c.issuerCommonName}</td>
-                    <td className="px-4 py-3.5">
+                    <td className="px-4 py-2 text-ink-700 truncate max-w-[200px]">{c.issuerCommonName}</td>
+                    <td className="px-4 py-2">
                       <div className="flex items-baseline justify-between gap-2">
                         <span className="text-ink-900 tnum">{formatDate(c.notAfter)}</span>
                         <span className={`text-[12px] tnum ${c.daysRemaining <= 7 ? 'text-crit-600 font-medium' : 'text-ink-500'}`}>{relativeDays(c.daysRemaining)}</span>
                       </div>
                       <LifetimeBar used={c.lifetimeUsed} status={c.status} className="mt-1.5" />
                     </td>
-                    <td className="px-4 py-3.5 text-ink-700 whitespace-nowrap">
+                    <td className="px-4 py-2 text-ink-700 whitespace-nowrap">
                       <span className="inline-flex items-center gap-1.5">
                         {c.hasKey && <KeyRound className="size-3.5 text-ink-400" />}
                         {c.keyAlgo} {c.keyBits ?? ''}
                       </span>
                     </td>
-                    <td className="px-4 py-3.5">
+                    <td className="px-4 py-2">
                       <div className="flex flex-wrap gap-1">
                         {c.profileIds.length === 0 ? <span className="text-[12px] text-ink-400">—</span> : c.profileIds.map((id) => <Badge key={id}>{profileName(id)}</Badge>)}
                       </div>
                     </td>
-                    <td className="px-4 py-3.5"><StatusBadge status={c.status} /></td>
-                    <td className="px-6 py-3.5 text-right">
+                    <td className="px-4 py-2"><StatusBadge status={c.status} /></td>
+                    <td className="px-6 py-2 text-right">
                       <div className="inline-flex items-center justify-end gap-1">
                         <LinkButton to={`/certificates/${c.id}/renew`} variant="secondary" size="sm" icon={<RefreshCw className="size-3.5" />} className="group-hover:border-ink-300">
                           Renew
@@ -546,7 +546,7 @@ export function Certificates() {
                       onClick={() => set({ page: item === 1 ? undefined : String(item) })}
                       className={clsx(
                         'size-8 rounded-lg text-[13px] font-medium tnum',
-                        item === safePage ? 'bg-ink-950 text-white' : 'text-ink-600 hover:bg-ink-100',
+                        item === safePage ? 'bg-text text-canvas' : 'text-ink-600 hover:bg-ink-100',
                       )}
                     >
                       {item}
