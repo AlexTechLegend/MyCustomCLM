@@ -26,6 +26,10 @@ export interface Certificate {
   /** Optional per-certificate deploy directory. Overrides the profile destination when set. */
   destinationOverride: string;
   renewalCount: number;
+  blueprintId?: string | null;
+  blueprintVersion?: number | null;
+  nextRenewalAt?: string | null;
+  blueprintSans?: string[];
   createdAt: string;
   updatedAt: string;
   status: CertStatus;
@@ -208,3 +212,20 @@ export const DEFAULT_SETTINGS: Settings = {
   criticalThresholdDays: 7,
   defaultValidityDays: 397,
 };
+
+export type UserRole = 'viewer' | 'operator' | 'approver' | 'admin';
+
+export const USER_ROLES: UserRole[] = ['viewer', 'operator', 'approver', 'admin'];
+
+export interface User {
+  id: string;
+  username: string;
+  displayName: string;
+  email: string;
+  role: UserRole;
+  source: 'local' | 'ldap';
+  scopeTags: string[];
+  isActive: boolean;
+  lastLoginAt: string | null;
+  createdAt: string;
+}

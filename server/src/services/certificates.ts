@@ -40,6 +40,10 @@ export interface CertRow {
   profile_ids: string;
   destination_override: string;
   renewal_count: number;
+  blueprint_id: string | null;
+  blueprint_version: number | null;
+  next_renewal_at: string | null;
+  blueprint_sans: string;
   created_at: string;
   updated_at: string;
 }
@@ -83,6 +87,10 @@ export function mapCert(r: CertRow): Certificate {
     profileIds: parseJson<string[]>(r.profile_ids, []),
     destinationOverride: r.destination_override ?? '',
     renewalCount: r.renewal_count,
+    blueprintId: r.blueprint_id ?? null,
+    blueprintVersion: r.blueprint_version ?? null,
+    nextRenewalAt: r.next_renewal_at ?? null,
+    blueprintSans: parseJson<string[]>(r.blueprint_sans, []),
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     ...st,
@@ -208,6 +216,10 @@ function rowFromMaterial(id: string, m: Material, extra: Partial<CertRow>): Cert
     profile_ids: extra.profile_ids ?? '[]',
     destination_override: extra.destination_override ?? '',
     renewal_count: extra.renewal_count ?? 0,
+    blueprint_id: extra.blueprint_id ?? null,
+    blueprint_version: extra.blueprint_version ?? null,
+    next_renewal_at: extra.next_renewal_at ?? null,
+    blueprint_sans: extra.blueprint_sans ?? '[]',
     created_at: extra.created_at ?? now,
     updated_at: now,
   };
@@ -312,6 +324,41 @@ export async function replaceCertificateMaterial(id: string, m: Material, source
     )
     .run(row);
   return getCertificate(id);
+}
+
+export function attachCertificateBlueprint(
+  id: string,
+  blueprintId: string | null,
+  version: number | null,
+  expectedSans?: string[],
+): Certificate | null {
+  if (!getCertificate(id)) return null;
+  db()
+    .prepare('UPDATE certificates SET blueprint_id = ?, blueprint_version = ?, blueprint_sans = ?, updated_at = ? WHERE id = ?')
+    .run(blueprintId, version, JSON.stringify(expectedSans ?? []), nowIso(), id);
+  return getCertificate(id);
+}
+
+export function setCertificateNextRenewal(id: string, nextRenewalAt: string | null): Certificate | null {
+  if (!getCertificate(id)) return null;
+  db().prepare('UPDATE certificates SET next_renewal_at = ?, updated_at = ? WHERE id = ?').run(nextRenewalAt, nowIso(), id);
+  return getCertificate(id);
+}
+
+export function listCertificatesByBlueprint(blueprintId: string): Certificate[] {
+  const rows = db().prepare('SELECT * FROM certificates WHERE blueprint_id = ?').all(blueprintId) as CertRow[];
+  return rows.map(mapCert);
+}
+
+export function listDueForRenewal(now = nowIso()): Certificate[] {
+  const rows = db()
+    .prepare(
+      `SELECT * FROM certificates
+       WHERE next_renewal_at IS NOT NULL AND next_renewal_at <= ?
+       ORDER BY next_renewal_at ASC`,
+    )
+    .all(now) as CertRow[];
+  return rows.map(mapCert);
 }
 
 export async function deleteCertificate(id: string): Promise<boolean> {

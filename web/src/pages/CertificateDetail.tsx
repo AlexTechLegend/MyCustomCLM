@@ -3,6 +3,7 @@ import { ChevronDown, Download, KeyRound, Link2, Pencil, RefreshCw, ShieldCheck,
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Breadcrumb } from '@/components/Breadcrumb';
+import { CertAutomationPanel } from '@/components/CertAutomationPanel';
 import { CopyableBadge, CopyableValue, CopyButton, useCopy } from '@/components/CopyButton';
 import { useToast } from '@/components/Toast';
 import { Badge, Button, Card, CardHeader, Checkbox, CodeBlock, ErrorBox, Field, Input, KeyValue, LifetimeBar, LinkButton, Loading, Modal, PageHeader, Select, StatusBadge, Textarea } from '@/components/ui';
@@ -299,6 +300,7 @@ export function CertificateDetail() {
         </div>
 
         <div className="space-y-6">
+          <CertAutomationPanel certificate={c} hosts={detail.data?.hosts} />
           <Card>
             <CardHeader title="Output profiles" description="Formats rendered and deployed on every renewal." action={<LinkButton to="/profiles/new" size="sm" variant="ghost">New</LinkButton>} />
             {profiles.data?.length === 0 ? (

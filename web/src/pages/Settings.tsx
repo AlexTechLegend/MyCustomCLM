@@ -3,6 +3,7 @@ import { Download, Landmark, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useToast } from '@/components/Toast';
 import { Button, Card, CardHeader, CodeBlock, ErrorBox, Field, Input, KeyValue, Loading, Modal, PageHeader } from '@/components/ui';
+import { setSetupDismissed, setupDismissed } from '@/lib/dashboardStore';
 import { api } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import type { Settings as SettingsT } from '@/types';
@@ -135,12 +136,24 @@ export function Settings() {
               <ErrorBox error={system.error} />
             )}
           </Card>
+          <Card>
+            <CardHeader title="First-run checklist" description="The dashboard hides the setup rail after you dismiss it. Bring it back at any time." />
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setSetupDismissed(false);
+                toast.success('Checklist will show on the dashboard');
+              }}
+            >
+              {setupDismissed() ? 'Show checklist on dashboard' : 'Checklist is visible'}
+            </Button>
+          </Card>
           <Card className="bg-ink-50/60">
             <h3 className="text-[13px] font-semibold text-ink-800 mb-2">Security notes</h3>
             <ul className="text-[13px] text-ink-600 space-y-1.5 list-disc pl-4">
               <li>Private keys are stored in the vault with mode 0600 and never leave the server except through the downloads you trigger.</li>
               <li>OpenSSL is invoked with argument arrays — no shell — and passwords are passed through temporary files, not the command line.</li>
-              <li>Vigil currently has no user accounts. Run it behind your VPN or a reverse proxy with authentication.</li>
+              <li>Turn on <code className="font-mono">VIGIL_AUTH=1</code> to enforce local accounts. Dashboard templates can be assigned to each role or person from Edit layout.</li>
             </ul>
           </Card>
         </div>

@@ -1,0 +1,17 @@
+<service>
+  <id>vigil-clm</id>
+  <name>Vigil CLM</name>
+  <description>Vigil Certificate Lifecycle Management API and scheduler</description>
+  <executable>node</executable>
+  <arguments>server\dist\index.js</arguments>
+  <workingdirectory>%BASE%\..\..</workingdirectory>
+  <stoptimeout>15 sec</stoptimeout>
+  <log mode="roll-by-size">
+    <sizeThreshold>10240</sizeThreshold>
+    <keepFiles>8</keepFiles>
+  </log>
+  <env name="NODE_ENV" value="production"/>
+  <env name="VIGIL_AUTH" value="1"/>
+  <env name="VIGIL_DATA_DIR" value="%BASE%\..\..\data"/>
+  <env name="PORT" value="4180"/>
+</service>

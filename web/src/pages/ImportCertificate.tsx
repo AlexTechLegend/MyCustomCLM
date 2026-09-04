@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, CheckCircle2, ChevronRight, Terminal } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Terminal } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Breadcrumb } from '@/components/Breadcrumb';
 import { FileDrop } from '@/components/FileDrop';
 import { useToast } from '@/components/Toast';
 import { Button, Card, CardHeader, Checkbox, CommandTrail, ErrorBox, Field, Input, LinkButton, PageHeader, Textarea } from '@/components/ui';
@@ -82,11 +82,7 @@ export function ImportCertificate() {
 
   return (
     <>
-      <div className="mb-2">
-        <Link to="/certificates" className="text-[13px] text-ink-500 hover:text-ink-800 inline-flex items-center gap-1">
-          <ChevronRight className="size-3.5 rotate-180" /> Certificates
-        </Link>
-      </div>
+      <Breadcrumb items={[{ label: 'Certificates', to: '/certificates' }, { label: 'Import' }]} />
       <PageHeader title="Import certificate" description="Drop a .pfx / .p12, or a .cer / .crt / .pem / .der plus its .key. Vigil unpacks it with OpenSSL, orders the chain and verifies the key." />
 
       <form
@@ -150,7 +146,7 @@ export function ImportCertificate() {
           </Card>
           <Card className="bg-ink-50/60">
             <h3 className="text-[13px] font-semibold text-ink-800 mb-2">What happens on import</h3>
-            <ol className="text-[13px] text-ink-600 space-y-1.5 list-decimal pl-4">
+            <ol className="font-prose text-[13px] text-ink-600 space-y-1.5 list-decimal pl-4">
               <li>PKCS#12 archives are unpacked with <code className="font-mono text-[12px]">openssl pkcs12</code> (legacy RC2 files are handled automatically).</li>
               <li>The certificate matching the private key becomes the leaf; the rest are ordered into a chain.</li>
               <li>Everything is normalised to PEM and stored in the vault with the key at 0600.</li>
