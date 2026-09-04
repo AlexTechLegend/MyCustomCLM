@@ -37,8 +37,8 @@ export function openApiDocument() {
         post: { summary: 'Run a pipeline (operator)', security: [{ cookie: [] }], requestBody: jsonBody('PipelineRun'), responses: { '201': { description: 'run' }, '429': { description: 'rate limited' } } },
       },
       '/pipelines/{id}/plan': { post: { summary: 'Plan a pipeline (operator)', security: [{ cookie: [] }], responses: { '200': { description: 'plan' } } } },
-      '/pipeline-runs/{id}/approve': { post: { summary: 'Approve a gated run (approver)', security: [{ cookie: [] }], responses: { '200': { description: 'run' } } } },
-      '/pipeline-runs/{id}/reject': { post: { summary: 'Reject a gated run (approver)', security: [{ cookie: [] }], responses: { '200': { description: 'run' } } } },
+      '/pipeline-runs/{id}/approve': { post: { summary: 'Approve a gated run (approver)', security: [{ cookie: [] }], requestBody: jsonBody('Approval'), responses: { '200': { description: 'run' } } } },
+      '/pipeline-runs/{id}/reject': { post: { summary: 'Reject a gated run (approver)', security: [{ cookie: [] }], requestBody: jsonBody('Approval'), responses: { '200': { description: 'run' } } } },
       '/blueprints': {
         get: { summary: 'List blueprints', security: [{ cookie: [] }], responses: { '200': { description: 'blueprints' } } },
         post: { summary: 'Create blueprint (admin)', security: [{ cookie: [] }], responses: { '201': { description: 'blueprint' } } },
@@ -50,7 +50,22 @@ export function openApiDocument() {
       '/jobs/{id}/retry': { post: { summary: 'Retry a job (operator)', security: [{ cookie: [] }], responses: { '200': { description: 'job' } } } },
       '/windows': {
         get: { summary: 'List maintenance windows', security: [{ cookie: [] }], responses: { '200': { description: 'windows' } } },
-        post: { summary: 'Create window (operator)', security: [{ cookie: [] }], responses: { '201': { description: 'window' } } },
+        post: { summary: 'Create window (operator)', security: [{ cookie: [] }], requestBody: jsonBody('Window'), responses: { '201': { description: 'window' } } },
+      },
+      '/dashboard-templates': {
+        get: { summary: 'Dashboard templates and the resolved assignment for this session', security: [{ cookie: [] }], responses: { '200': { description: 'store + resolvedId' } } },
+        put: { summary: 'Replace the template store (admin)', security: [{ cookie: [] }], requestBody: jsonBody('DashboardTemplateStore'), responses: { '200': { description: 'store + resolvedId' } } },
+      },
+      '/discovery': {
+        get: { summary: 'List persisted discovery results', security: [{ cookie: [] }], responses: { '200': { description: 'results' } } },
+      },
+      '/discovery/scan': {
+        post: {
+          summary: 'Scan targets for TLS certificates (operator)',
+          security: [{ cookie: [] }],
+          requestBody: jsonBody('DiscoveryScan'),
+          responses: { '201': { description: 'hits + persisted rows' }, '429': { description: 'rate limited' } },
+        },
       },
     },
     components: {
@@ -63,6 +78,26 @@ export function openApiDocument() {
         Renew: { type: 'object', required: ['method'], properties: { method: { type: 'string', enum: ['internal-ca', 'self-signed', 'csr'] } } },
         Instantiate: { type: 'object', required: ['commonName'], properties: { commonName: { type: 'string' }, sans: { type: 'array', items: { type: 'string' } } } },
         PipelineRun: { type: 'object', properties: { certificateId: { type: 'string' }, hostId: { type: 'string' }, dryRun: { type: 'boolean' } } },
+        Approval: { type: 'object', properties: { note: { type: 'string' } } },
+        Window: { type: 'object', properties: { name: { type: 'string' }, weekday: { type: 'integer' }, startTime: { type: 'string' }, endTime: { type: 'string' } } },
+        DashboardTemplateStore: {
+          type: 'object',
+          required: ['templates'],
+          properties: {
+            templates: { type: 'array', items: { type: 'object' } },
+            roleAssignments: { type: 'object' },
+            userAssignments: { type: 'object' },
+            defaultId: { type: 'string' },
+          },
+        },
+        DiscoveryScan: {
+          type: 'object',
+          required: ['targets'],
+          properties: {
+            targets: { type: 'array', items: { type: 'string' } },
+            ports: { type: 'array', items: { type: 'integer' } },
+          },
+        },
       },
     },
     'x-vigil': { authEnabled: config.authEnabled, dataDir: config.dataDir },

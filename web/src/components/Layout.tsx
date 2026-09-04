@@ -17,6 +17,7 @@ import {
   PanelLeftOpen,
   Plus,
   RefreshCw,
+  Search,
   Server,
   Settings,
   ShieldCheck,
@@ -48,6 +49,7 @@ const NAV = [
 
 const AUTOMATION = [
   { to: '/hosts', label: 'Hosts', icon: Server },
+  { to: '/discovery', label: 'Discovery', icon: Search },
   { to: '/blueprints', label: 'Blueprints', icon: Boxes },
   { to: '/pipelines', label: 'Pipelines', icon: GitBranch },
   { to: '/jobs', label: 'Jobs', icon: ListTodo },
@@ -65,6 +67,7 @@ const G_JUMP: Record<string, string> = {
   s: '/settings',
   k: '/calendar',
   h: '/hosts',
+  y: '/discovery',
   b: '/blueprints',
   l: '/pipelines',
   j: '/jobs',

@@ -15,6 +15,7 @@ import { renewalsRoutes } from './renewals.routes.js';
 import { settingsRoutes } from './settings.routes.js';
 import { systemRoutes } from './system.routes.js';
 import { windowsRoutes } from './windows.routes.js';
+import { discoveryRoutes } from './discovery.routes.js';
 
 export const api = Router();
 
@@ -42,5 +43,5 @@ api.use(blueprintsRoutes);
 api.use(windowsRoutes);
 api.use(authRoutes);
 api.use(notificationsRoutes);
-// api.use(discoveryRoutes);      // automation-engine
+api.use(discoveryRoutes);
 // api.use(connectorsRoutes);     // automation-engine

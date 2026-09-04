@@ -14,7 +14,7 @@ import {
   planPipeline,
   updatePipeline,
 } from '../services/pipelines.js';
-import { parseBody, pipelineRunBody } from '../lib/schema.js';
+import { approvalBody, parseBody, pipelineRunBody } from '../lib/schema.js';
 import { actorId, str, wrap } from './http.js';
 
 export const pipelinesRoutes = Router();
@@ -96,7 +96,8 @@ pipelinesRoutes.post(
   '/pipeline-runs/:id/approve',
   requireRole('approver'),
   wrap(async (req, res) => {
-    const run = await approvePipelineRun(req.params.id as string, { userId: actorId(req) });
+    const body = parseBody(approvalBody, req.body ?? {});
+    const run = await approvePipelineRun(req.params.id as string, { userId: actorId(req), note: body.note });
     res.json(run);
   }),
 );
@@ -104,7 +105,8 @@ pipelinesRoutes.post(
   '/pipeline-runs/:id/reject',
   requireRole('approver'),
   wrap(async (req, res) => {
-    const run = await approvePipelineRun(req.params.id as string, { userId: actorId(req), reject: true });
+    const body = parseBody(approvalBody, req.body ?? {});
+    const run = await approvePipelineRun(req.params.id as string, { userId: actorId(req), reject: true, note: body.note });
     res.json(run);
   }),
 );

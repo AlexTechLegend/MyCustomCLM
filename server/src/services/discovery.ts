@@ -1,3 +1,5 @@
+import { db, newId, nowIso } from '../db.js';
+import type { DiscoveryResult } from '../types.js';
 import { listCertificates } from './certificates.js';
 import { fingerprintsMatch, harvestTlsCertificate, normalizeFingerprint } from './tls-verify.js';
 
@@ -67,8 +69,7 @@ export function expandCidr(cidr: string, remaining = MAX_EXPANDED): string[] {
 
 /**
  * Scan targets, harvest served certificates, diff against the inventory.
- * Persistence is deferred until Task 8 adds `discovery_results`.
- * Scheduler wiring is also deferred (`JobType` has no `discovery`).
+ * Results are written to `discovery_results`. Scheduler job type is still deferred.
  */
 export async function runDiscoveryScan(input: DiscoveryScanInput): Promise<DiscoveryHit[]> {
   const hosts = expandDiscoveryTargets(input.targets);
@@ -153,3 +154,111 @@ function isRefused(err: unknown): boolean {
 }
 
 void normalizeFingerprint;
+
+interface DiscoveryRow {
+  id: string;
+  scan_id: string;
+  address: string;
+  port: number;
+  hostname: string;
+  subject: string;
+  issuer: string;
+  not_after: string | null;
+  fingerprint_sha256: string;
+  matched_certificate_id: string | null;
+  first_seen: string;
+  last_seen: string;
+}
+
+function mapDiscovery(r: DiscoveryRow): DiscoveryResult {
+  return {
+    id: r.id,
+    scanId: r.scan_id,
+    address: r.address,
+    port: r.port,
+    hostname: r.hostname,
+    subject: r.subject,
+    issuer: r.issuer,
+    notAfter: r.not_after,
+    fingerprintSha256: r.fingerprint_sha256,
+    matchedCertificateId: r.matched_certificate_id,
+    firstSeen: r.first_seen,
+    lastSeen: r.last_seen,
+  };
+}
+
+export function persistDiscoveryHits(scanId: string, hits: DiscoveryHit[]): DiscoveryResult[] {
+  const now = nowIso();
+  const out: DiscoveryResult[] = [];
+  const find = db().prepare(
+    `SELECT * FROM discovery_results WHERE address = ? AND port = ? AND fingerprint_sha256 = ? ORDER BY last_seen DESC LIMIT 1`,
+  );
+  const insert = db().prepare(
+    `INSERT INTO discovery_results
+      (id, scan_id, address, port, hostname, subject, issuer, not_after, fingerprint_sha256, matched_certificate_id, first_seen, last_seen)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+  const touch = db().prepare(
+    `UPDATE discovery_results SET scan_id = ?, hostname = ?, subject = ?, not_after = ?, matched_certificate_id = ?, last_seen = ? WHERE id = ?`,
+  );
+  for (const hit of hits) {
+    const existing = find.get(hit.host, hit.port, hit.fingerprintSha256) as DiscoveryRow | undefined;
+    if (existing) {
+      touch.run(scanId, hit.host, hit.commonName, hit.notAfter ?? existing.not_after, hit.certificateId ?? existing.matched_certificate_id, now, existing.id);
+      out.push(
+        mapDiscovery({
+          ...existing,
+          scan_id: scanId,
+          hostname: hit.host,
+          subject: hit.commonName,
+          not_after: hit.notAfter ?? existing.not_after,
+          matched_certificate_id: hit.certificateId ?? existing.matched_certificate_id,
+          last_seen: now,
+        }),
+      );
+      continue;
+    }
+    const id = newId('dsc');
+    insert.run(
+      id,
+      scanId,
+      hit.host,
+      hit.port,
+      hit.host,
+      hit.commonName,
+      '',
+      hit.notAfter ?? null,
+      hit.fingerprintSha256,
+      hit.certificateId ?? null,
+      now,
+      now,
+    );
+    out.push({
+      id,
+      scanId,
+      address: hit.host,
+      port: hit.port,
+      hostname: hit.host,
+      subject: hit.commonName,
+      issuer: '',
+      notAfter: hit.notAfter ?? null,
+      fingerprintSha256: hit.fingerprintSha256,
+      matchedCertificateId: hit.certificateId ?? null,
+      firstSeen: now,
+      lastSeen: now,
+    });
+  }
+  return out;
+}
+
+export function listDiscoveryResults(scanId?: string): DiscoveryResult[] {
+  const rows = scanId
+    ? (db().prepare('SELECT * FROM discovery_results WHERE scan_id = ? ORDER BY last_seen DESC').all(scanId) as DiscoveryRow[])
+    : (db().prepare('SELECT * FROM discovery_results ORDER BY last_seen DESC LIMIT 500').all() as DiscoveryRow[]);
+  return rows.map(mapDiscovery);
+}
+
+export function latestDiscoveryScanId(): string | null {
+  const row = db().prepare('SELECT scan_id FROM discovery_results ORDER BY last_seen DESC LIMIT 1').get() as { scan_id: string } | undefined;
+  return row?.scan_id ?? null;
+}

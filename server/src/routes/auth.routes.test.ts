@@ -41,6 +41,8 @@ const MUTATING: [string, string][] = [
   ['POST', '/api/pipeline-runs/run_x/reject'],
   ['POST', '/api/users'],
   ['PUT', '/api/settings'],
+  ['PUT', '/api/dashboard-templates'],
+  ['POST', '/api/discovery/scan'],
 ];
 
 describe('auth default-deny', () => {

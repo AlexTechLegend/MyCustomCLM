@@ -77,6 +77,42 @@ export const pipelineRunBody = z.object({
   dryRun: z.boolean().optional(),
 });
 
+export const approvalBody = z.object({
+  note: z.string().optional(),
+});
+
+export const discoveryScanBody = z.object({
+  targets: z.array(z.string().min(1)).min(1),
+  ports: z.array(z.number().int().positive()).optional(),
+  concurrency: z.number().int().positive().optional(),
+});
+
+const gridCols = z.union([z.literal(12), z.literal(24), z.literal(36)]);
+const gridPos = z.object({
+  id: z.string(),
+  x: z.number(),
+  y: z.number(),
+  w: z.number(),
+  h: z.number(),
+});
+export const dashboardTemplateStoreBody = z.object({
+  templates: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      layout: z.object({
+        version: z.literal(2),
+        cols: gridCols,
+        rows: z.number(),
+        items: z.array(gridPos),
+      }),
+    }),
+  ),
+  roleAssignments: z.record(z.string()).optional(),
+  userAssignments: z.record(z.string()).optional(),
+  defaultId: z.string().optional(),
+});
+
 export function parseBody<T>(schema: z.ZodType<T>, raw: unknown): T {
   const result = schema.safeParse(raw);
   if (!result.success) {
@@ -94,3 +130,6 @@ export type HostBody = z.infer<typeof hostBody>;
 export type RenewBody = z.infer<typeof renewBody>;
 export type InstantiateBody = z.infer<typeof instantiateBody>;
 export type PipelineRunBody = z.infer<typeof pipelineRunBody>;
+export type ApprovalBody = z.infer<typeof approvalBody>;
+export type DiscoveryScanBody = z.infer<typeof discoveryScanBody>;
+export type DashboardTemplateStoreBody = z.infer<typeof dashboardTemplateStoreBody>;

@@ -1,5 +1,11 @@
 import { db, newId, nowIso, parseJson } from '../db.js';
-import type { AgentStatus, Host, HostPlatform } from '../types.js';
+import type { AgentStatus, Host, HostPlatform, HostTransport } from '../types.js';
+
+const TRANSPORTS: HostTransport[] = ['none', 'winrm', 'ssh', 'agent'];
+
+function coerceTransport(v: unknown): HostTransport {
+  return TRANSPORTS.includes(v as HostTransport) ? (v as HostTransport) : 'none';
+}
 
 interface HostRow {
   id: string;
@@ -16,6 +22,9 @@ interface HostRow {
   tags: string;
   created_at: string;
   updated_at: string;
+  transport?: string;
+  transport_config?: string;
+  agent_token_credential_id?: string | null;
 }
 
 function mapRow(r: HostRow): Host {
@@ -34,6 +43,9 @@ function mapRow(r: HostRow): Host {
     tags: parseJson(r.tags, []),
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    transport: coerceTransport(r.transport),
+    transportConfig: parseJson(r.transport_config ?? '{}', {}),
+    agentTokenCredentialId: r.agent_token_credential_id ?? null,
   };
 }
 
@@ -68,11 +80,14 @@ export function createHost(input: Partial<Host>): Host {
     tags: JSON.stringify(input.tags ?? []),
     created_at: now,
     updated_at: now,
+    transport: coerceTransport(input.transport),
+    transport_config: JSON.stringify(input.transportConfig ?? {}),
+    agent_token_credential_id: input.agentTokenCredentialId ?? null,
   };
   db()
     .prepare(
-      `INSERT INTO hosts (id, name, hostname, address, platform, environment, owner, credential_id, agent_status, agent_last_seen, notes, tags, created_at, updated_at)
-       VALUES (@id, @name, @hostname, @address, @platform, @environment, @owner, @credential_id, @agent_status, @agent_last_seen, @notes, @tags, @created_at, @updated_at)`,
+      `INSERT INTO hosts (id, name, hostname, address, platform, environment, owner, credential_id, agent_status, agent_last_seen, notes, tags, created_at, updated_at, transport, transport_config, agent_token_credential_id)
+       VALUES (@id, @name, @hostname, @address, @platform, @environment, @owner, @credential_id, @agent_status, @agent_last_seen, @notes, @tags, @created_at, @updated_at, @transport, @transport_config, @agent_token_credential_id)`,
     )
     .run(row);
   const created = getHost(row.id)!;
@@ -92,7 +107,7 @@ export function updateHost(id: string, input: Partial<Host>): Host | null {
   if (!existing) return null;
   db()
     .prepare(
-      `UPDATE hosts SET name = ?, hostname = ?, address = ?, platform = ?, environment = ?, owner = ?, credential_id = ?, agent_status = ?, agent_last_seen = ?, notes = ?, tags = ?, updated_at = ? WHERE id = ?`,
+      `UPDATE hosts SET name = ?, hostname = ?, address = ?, platform = ?, environment = ?, owner = ?, credential_id = ?, agent_status = ?, agent_last_seen = ?, notes = ?, tags = ?, transport = ?, transport_config = ?, agent_token_credential_id = ?, updated_at = ? WHERE id = ?`,
     )
     .run(
       (input.name ?? existing.name).trim() || existing.name,
@@ -106,6 +121,9 @@ export function updateHost(id: string, input: Partial<Host>): Host | null {
       input.agentLastSeen !== undefined ? input.agentLastSeen : existing.agentLastSeen,
       input.notes ?? existing.notes,
       JSON.stringify(input.tags ?? existing.tags),
+      coerceTransport(input.transport ?? existing.transport),
+      JSON.stringify(input.transportConfig ?? existing.transportConfig ?? {}),
+      input.agentTokenCredentialId !== undefined ? input.agentTokenCredentialId : (existing.agentTokenCredentialId ?? null),
       nowIso(),
       id,
     );
