@@ -1,0 +1,29 @@
+[Unit]
+Description=Vigil CLM
+Documentation=https://github.com/AlexTechLegend/MyCustomCLM
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=vigil
+Group=vigil
+WorkingDirectory=/opt/vigil
+Environment=NODE_ENV=production
+Environment=VIGIL_AUTH=1
+Environment=VIGIL_DATA_DIR=/var/lib/vigil
+Environment=PORT=4180
+EnvironmentFile=-/etc/vigil/vigil.env
+ExecStart=/usr/bin/node /opt/vigil/server/dist/index.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/vigil
+# Health probe: GET /api/health is in-process JSON and does not touch the database.
+
+[Install]
+WantedBy=multi-user.target

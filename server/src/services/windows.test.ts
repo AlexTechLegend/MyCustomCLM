@@ -53,4 +53,14 @@ describe('resolveNthWindowBeforeExpiry', () => {
     assert.ok(second);
     assert.equal(second!.toISOString().slice(0, 10), '2026-09-30');
   });
+
+  it('returns null when every candidate before expiry is blacked out', () => {
+    const notAfter = '2026-10-16T12:00:00.000Z';
+    const win = wedWindow({
+      blackoutRanges: [{ start: '2020-01-01T00:00:00.000Z', end: '2030-01-01T00:00:00.000Z', reason: 'forever' }],
+    });
+    const first = resolveNthWindowBeforeExpiry(notAfter, win, { nthWindowBeforeExpiry: 1 });
+    assert.equal(first, null);
+  });
 });
+
