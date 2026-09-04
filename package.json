@@ -2,7 +2,7 @@
   "name": "vigil-clm",
   "version": "0.1.0",
   "private": true,
-  "description": "Vigil \u2014 self-hosted Certificate Lifecycle Management with OpenSSL-powered, reference-driven renewals.",
+  "description": "Vigil — self-hosted Certificate Lifecycle Management with OpenSSL-powered, reference-driven renewals.",
   "workspaces": [
     "server",
     "web"
@@ -13,11 +13,18 @@
     "start": "npm run start -w server",
     "seed": "npm run seed -w server",
     "typecheck": "npm run typecheck -w server && npm run typecheck -w web",
-    "test": "npm run test -w server",
-    "doctor": "node scripts/doctor.mjs"
+    "test": "npm run test -w server && npm run test -w web",
+    "doctor": "node scripts/doctor.mjs",
+    "lint": "eslint ."
   },
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "@eslint/js": "^9.39.5",
+    "concurrently": "^9.1.2",
+    "eslint": "^9.39.5",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.12.0",
+    "typescript-eslint": "^8.69.0"
   },
   "engines": {
     "node": ">=20"

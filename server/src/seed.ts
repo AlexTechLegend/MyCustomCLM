@@ -229,7 +229,7 @@ async function main() {
     { type: 'import', title: (n) => `Imported ${n}`, detail: 'PKCS#12 unpacked to canonical PEM with private key', minutes: () => baselines.import, weight: 3 },
     { type: 'renewal', title: (n) => `Renewed ${n}`, detail: 'Internal CA, new RSA 2048 key', minutes: () => baselines.renewal, weight: 4 },
     { type: 'conversion', title: (n) => `Rendered 3 output files for ${n}`, detail: 'fullchain.cer, private.key, {cn}.pfx', minutes: () => baselines.conversion * 3, weight: 4 },
-    { type: 'deployment', title: (n) => `Deployed 3 files to 1 location`, detail: 'IIS – Web Farm destination', minutes: () => baselines.deployment, weight: 3 },
+    { type: 'deployment', title: (_n) => `Deployed 3 files to 1 location`, detail: 'IIS – Web Farm destination', minutes: () => baselines.deployment, weight: 3 },
     { type: 'csr', title: (n) => `Generated CSR for ${n}`, detail: 'Key reused, SANs carried over', minutes: () => baselines.csr, weight: 2 },
   ];
   const pool = templates.flatMap((t) => Array(t.weight).fill(t) as typeof templates);

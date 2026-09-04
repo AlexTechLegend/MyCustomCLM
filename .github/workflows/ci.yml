@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck (server + web)
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test (server + web)
+        run: npm test
+
+      - name: Build (web + server)
+        run: npm run build
