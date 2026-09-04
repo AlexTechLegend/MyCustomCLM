@@ -1,6 +1,7 @@
 import clsx from 'clsx';
 import { Moon, Sun } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { syncThemeColor } from '@/lib/palette';
 import { applyTheme, cycleTheme, persistTheme, readTheme, type Theme } from '@/lib/theme';
 
 const META: Record<Theme, { label: string; icon: typeof Sun }> = {
@@ -18,13 +19,19 @@ export function ThemeToggle({ className }: { className?: string }) {
   useEffect(() => {
     const sync = () => setTheme(readTheme());
     window.addEventListener('storage', sync);
-    return () => window.removeEventListener('storage', sync);
+    window.addEventListener('vigil:appearance', sync);
+    return () => {
+      window.removeEventListener('storage', sync);
+      window.removeEventListener('vigil:appearance', sync);
+    };
   }, []);
 
   const next = () => {
     const value = cycleTheme(theme);
     persistTheme(value);
     setTheme(value);
+    syncThemeColor();
+    window.dispatchEvent(new Event('vigil:appearance'));
   };
 
   const { label, icon: Icon } = META[theme];

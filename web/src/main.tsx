@@ -4,10 +4,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import { ToastProvider } from './components/Toast';
+import { persistPalette, readPalette } from './lib/palette';
 import { persistTheme, readTheme } from './lib/theme';
 import './styles.css';
+import './styles/palettes.css';
 
 persistTheme(readTheme());
+persistPalette(readPalette());
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false, staleTime: 10_000 } },
