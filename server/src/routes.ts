@@ -149,7 +149,11 @@ api.get(
 api.put(
   '/dashboard-templates',
   requireRole('admin'),
-  wrap((req, res) => res.json(saveTemplateStore(req.body))),
+  wrap((req, res) => {
+    const store = saveTemplateStore(req.body);
+    const user = (req as AuthedRequest).user;
+    res.json({ ...store, resolvedId: resolveTemplateId(store, user) });
+  }),
 );
 
 // Certificates -------------------------------------------------------------

@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -41,15 +41,16 @@ const ROLE_LABEL: Record<UserRole, string> = {
   admin: 'Admin',
 };
 
-function syncServer() {
+function syncServer(resolvedId: string) {
   const payload = exportCustomStore();
-  return api.saveDashboardTemplates(payload).catch(() => payload);
+  return api.saveDashboardTemplates(payload).catch(() => ({ ...payload, resolvedId }));
 }
 
 export function DashboardBuilder() {
   const navigate = useNavigate();
   const toast = useToast();
   const lgUp = useIsLgUp();
+  const queryClient = useQueryClient();
 
   const dash = useQuery({ queryKey: ['dashboard'], queryFn: api.dashboard, refetchInterval: 60_000 });
   const certs = useQuery({ queryKey: ['certificates', {}], queryFn: () => api.certificates({}) });
@@ -182,7 +183,9 @@ export function DashboardBuilder() {
     persistLayout(saved.layout);
     setActiveDashboard(saved.id);
     try {
-      await syncServer();
+      const remote = await syncServer(saved.id);
+      queryClient.setQueryData(['dashboard-templates'], { ...remote, resolvedId: remote.resolvedId ?? saved.id });
+      await queryClient.invalidateQueries({ queryKey: ['dashboard-templates'] });
     } catch {
       /* local copy is enough when the API is unreachable */
     }

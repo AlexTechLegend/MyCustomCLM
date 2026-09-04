@@ -42,7 +42,7 @@ export function Dashboard() {
   useEffect(() => {
     if (!remote.data) return;
     mergeServerTemplates(remote.data);
-    const id = resolveDashboardId(me.data?.user);
+    const id = remote.data.resolvedId || resolveDashboardId(me.data?.user);
     const dash = findDashboard(id);
     if (dash) {
       setActiveId(id);

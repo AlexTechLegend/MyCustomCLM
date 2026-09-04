@@ -154,7 +154,7 @@ export const api = {
     roleAssignments: Partial<Record<UserRole, string>>;
     userAssignments: Record<string, string>;
     defaultId: string;
-  }) => request<typeof body>('/api/dashboard-templates', json('PUT', body)),
+  }) => request<typeof body & { resolvedId: string }>('/api/dashboard-templates', json('PUT', body)),
   ca: () => request<CaInfo>('/api/ca'),
   createCa: (body: { commonName: string; organisation: string; days: number }) => request<{ ok: true }>('/api/ca', json('POST', body)),
   deleteCa: () => request<void>('/api/ca', { method: 'DELETE' }),

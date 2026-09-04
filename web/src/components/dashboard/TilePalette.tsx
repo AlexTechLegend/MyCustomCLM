@@ -31,10 +31,10 @@ export function TilePalette({
   const placed = useMemo(() => new Set(layout.items.map((i) => i.id)), [layout.items]);
   const evict1 = evictedBy(layout.items, layout.rows - 1);
   const evict12 = evictedBy(layout.items, layout.rows - 12);
-  const blocking = evict1[0] ?? evict12[0] ?? null;
-  const blockingTitle = blocking ? TILE_REGISTRY.find((t) => t.id === blocking.id)?.title ?? blocking.id : null;
   const canShrink1 = layout.rows > MIN_ROWS && evict1.length === 0;
   const canShrink12 = layout.rows - 12 >= MIN_ROWS && evict12.length === 0;
+  const blocking = (layout.rows > MIN_ROWS && evict1[0]) || (layout.rows - 12 >= MIN_ROWS && evict12[0]) || null;
+  const blockingTitle = blocking ? TILE_REGISTRY.find((t) => t.id === blocking.id)?.title ?? blocking.id : null;
 
   const q = query.trim().toLowerCase();
   const visible = TILE_REGISTRY.filter((t) => !q || t.title.toLowerCase().includes(q) || t.description.toLowerCase().includes(q));
