@@ -14,13 +14,34 @@ import {
   planPipeline,
   updatePipeline,
 } from '../services/pipelines.js';
-import { approvalBody, parseBody, pipelineRunBody } from '../lib/schema.js';
+import { runPipelinePreflight } from '../services/steps/preflight.js';
+import { resolveTransport } from '../services/transport/index.js';
+import { approvalBody, parseBody, pipelinePreflightBody, pipelineRunBody } from '../lib/schema.js';
 import { actorId, str, wrap } from './http.js';
 
 export const pipelinesRoutes = Router();
 
 pipelinesRoutes.get('/pipelines', wrap((_req, res) => res.json(listPipelines())));
 pipelinesRoutes.get('/pipelines/steps', wrap((_req, res) => res.json(describeStepLibrary())));
+pipelinesRoutes.post(
+  '/pipelines/preflight',
+  requireRole('operator'),
+  wrap(async (req, res) => {
+    const body = parseBody(pipelinePreflightBody, req.body);
+    const resolved = await resolveTransport(body.hostId);
+    const report = await runPipelinePreflight({
+      runId: 'preflight',
+      certificateId: body.certificateId ?? null,
+      hostId: body.hostId ?? null,
+      renewalId: body.renewalId ?? null,
+      params: body.params && typeof body.params === 'object' ? body.params : {},
+      prior: {},
+      dryRun: true,
+      transport: resolved.transport,
+    });
+    res.json({ ...report, transport: resolved.kind, deferredLookup: resolved.deferredLookup });
+  }),
+);
 pipelinesRoutes.post('/pipelines', requireRole('operator'), wrap((req, res) => res.status(201).json(createPipeline(req.body))));
 pipelinesRoutes.get(
   '/pipelines/:id',

@@ -1,4 +1,5 @@
 import { config } from '../config.js';
+import { AGENT_WIRE_FORMAT } from '../services/transport/agent.js';
 
 /** Hand-maintained OpenAPI 3 document. The web agent can generate a client from GET /api/openapi.json. */
 export function openApiDocument() {
@@ -48,6 +49,19 @@ export function openApiDocument() {
       },
       '/jobs/{id}/cancel': { post: { summary: 'Cancel a job (operator)', security: [{ cookie: [] }], responses: { '200': { description: 'job' } } } },
       '/jobs/{id}/retry': { post: { summary: 'Retry a job (operator)', security: [{ cookie: [] }], responses: { '200': { description: 'job' } } } },
+      '/pipelines/preflight': {
+        post: { summary: 'Run pipeline preflight without executing (operator)', security: [{ cookie: [] }], requestBody: jsonBody('PipelinePreflight'), responses: { '200': { description: 'report' } } },
+      },
+      '/discovery': { get: { summary: 'List persisted discovery results', security: [{ cookie: [] }], responses: { '200': { description: 'results' } } } },
+      '/discovery/scan': {
+        post: { summary: 'Scan targets for TLS certificates (operator)', security: [{ cookie: [] }], requestBody: jsonBody('DiscoveryScan'), responses: { '201': { description: 'hits + persisted results' }, '429': { description: 'rate limited' } } },
+      },
+      '/connectors/adcs/templates': {
+        get: { summary: 'List ADCS templates (operator)', security: [{ cookie: [] }], responses: { '200': { description: 'templates' } } },
+      },
+      '/notifications/{id}/test': {
+        post: { summary: 'Send a test notification (admin)', security: [{ cookie: [] }], responses: { '200': { description: 'delivery' }, '404': { description: 'missing' } } },
+      },
       '/windows': {
         get: { summary: 'List maintenance windows', security: [{ cookie: [] }], responses: { '200': { description: 'windows' } } },
         post: { summary: 'Create window (operator)', security: [{ cookie: [] }], requestBody: jsonBody('Window'), responses: { '201': { description: 'window' } } },
@@ -55,17 +69,6 @@ export function openApiDocument() {
       '/dashboard-templates': {
         get: { summary: 'Dashboard templates and the resolved assignment for this session', security: [{ cookie: [] }], responses: { '200': { description: 'store + resolvedId' } } },
         put: { summary: 'Replace the template store (admin)', security: [{ cookie: [] }], requestBody: jsonBody('DashboardTemplateStore'), responses: { '200': { description: 'store + resolvedId' } } },
-      },
-      '/discovery': {
-        get: { summary: 'List persisted discovery results', security: [{ cookie: [] }], responses: { '200': { description: 'results' } } },
-      },
-      '/discovery/scan': {
-        post: {
-          summary: 'Scan targets for TLS certificates (operator)',
-          security: [{ cookie: [] }],
-          requestBody: jsonBody('DiscoveryScan'),
-          responses: { '201': { description: 'hits + persisted rows' }, '429': { description: 'rate limited' } },
-        },
       },
     },
     components: {
@@ -78,6 +81,7 @@ export function openApiDocument() {
         Renew: { type: 'object', required: ['method'], properties: { method: { type: 'string', enum: ['internal-ca', 'self-signed', 'csr'] } } },
         Instantiate: { type: 'object', required: ['commonName'], properties: { commonName: { type: 'string' }, sans: { type: 'array', items: { type: 'string' } } } },
         PipelineRun: { type: 'object', properties: { certificateId: { type: 'string' }, hostId: { type: 'string' }, dryRun: { type: 'boolean' } } },
+        PipelinePreflight: { type: 'object', properties: { certificateId: { type: 'string' }, hostId: { type: 'string' }, params: { type: 'object' } } },
         Approval: { type: 'object', properties: { note: { type: 'string' } } },
         Window: { type: 'object', properties: { name: { type: 'string' }, weekday: { type: 'integer' }, startTime: { type: 'string' }, endTime: { type: 'string' } } },
         DashboardTemplateStore: {
@@ -100,7 +104,7 @@ export function openApiDocument() {
         },
       },
     },
-    'x-vigil': { authEnabled: config.authEnabled, dataDir: config.dataDir },
+    'x-vigil': { authEnabled: config.authEnabled, dataDir: config.dataDir, agent: AGENT_WIRE_FORMAT },
   };
 }
 

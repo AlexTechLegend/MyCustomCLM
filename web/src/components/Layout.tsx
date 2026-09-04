@@ -21,6 +21,7 @@ import {
   Server,
   Settings,
   ShieldCheck,
+  SlidersHorizontal,
   Tags,
   X,
 } from 'lucide-react';
@@ -30,32 +31,58 @@ import { CommandPalette } from './CommandPalette';
 import { DiagnosticsDrawer } from './DiagnosticsDrawer';
 import { HealthStrip } from './HealthStrip';
 import { Logo, Mark } from './Logo';
+import { ExpandedNav, NavRail, type NavGroup } from './NavRail';
 import { ShortcutMap } from './ShortcutMap';
 import { ThemeToggle } from './ThemeToggle';
 import { api, pipelinesApi } from '@/lib/api';
 import { hours } from '@/lib/format';
 
-const NAV = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/certificates', label: 'Certificates', icon: ShieldCheck },
-  { to: '/renewals', label: 'Renewals', icon: RefreshCw },
-  { to: '/calendar', label: 'Calendar', icon: CalendarDays },
-  { to: '/profiles', label: 'Output profiles', icon: FolderCog },
-  { to: '/identities', label: 'Identity templates', icon: Fingerprint },
-  { to: '/tags', label: 'Tags & groups', icon: Tags },
-  { to: '/activity', label: 'Activity', icon: Activity },
-  { to: '/settings', label: 'Settings', icon: Settings },
-];
-
-const AUTOMATION = [
-  { to: '/hosts', label: 'Hosts', icon: Server },
-  { to: '/discovery', label: 'Discovery', icon: Search },
-  { to: '/blueprints', label: 'Blueprints', icon: Boxes },
-  { to: '/pipelines', label: 'Pipelines', icon: GitBranch },
-  { to: '/jobs', label: 'Jobs', icon: ListTodo },
-  { to: '/approvals', label: 'Approvals', icon: Inbox },
-  { to: '/credentials', label: 'Credentials', icon: KeyRound },
-  { to: '/windows', label: 'Windows', icon: CalendarClock },
+const GROUPS: NavGroup[] = [
+  {
+    id: 'overview',
+    label: 'Overview',
+    icon: LayoutDashboard,
+    items: [
+      { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
+      { to: '/activity', label: 'Activity', icon: Activity },
+    ],
+  },
+  {
+    id: 'certs',
+    label: 'Certificates',
+    icon: ShieldCheck,
+    items: [
+      { to: '/certificates', label: 'Certificates', icon: ShieldCheck },
+      { to: '/renewals', label: 'Renewals', icon: RefreshCw },
+      { to: '/calendar', label: 'Calendar', icon: CalendarDays },
+    ],
+  },
+  {
+    id: 'auto',
+    label: 'Automation',
+    icon: Server,
+    items: [
+      { to: '/hosts', label: 'Hosts', icon: Server },
+      { to: '/discovery', label: 'Discovery', icon: Search },
+      { to: '/blueprints', label: 'Blueprints', icon: Boxes },
+      { to: '/pipelines', label: 'Pipelines', icon: GitBranch },
+      { to: '/jobs', label: 'Jobs', icon: ListTodo },
+      { to: '/approvals', label: 'Approvals', icon: Inbox },
+      { to: '/windows', label: 'Windows', icon: CalendarClock },
+    ],
+  },
+  {
+    id: 'config',
+    label: 'Configuration',
+    icon: SlidersHorizontal,
+    items: [
+      { to: '/profiles', label: 'Output profiles', icon: FolderCog },
+      { to: '/identities', label: 'Identity templates', icon: Fingerprint },
+      { to: '/tags', label: 'Tags & groups', icon: Tags },
+      { to: '/credentials', label: 'Credentials', icon: KeyRound },
+      { to: '/settings', label: 'Settings', icon: Settings },
+    ],
+  },
 ];
 
 const G_JUMP: Record<string, string> = {
@@ -214,58 +241,11 @@ export function Layout() {
         </div>
 
         <nav className={clsx('relative flex-1 space-y-0.5 overflow-y-auto scrollbar-thin', rail ? 'px-2' : 'px-3')}>
-          {NAV.map((n) => {
-            const active = n.end ? location.pathname === n.to : location.pathname === n.to || location.pathname.startsWith(`${n.to}/`);
-            return (
-              <NavLink
-                key={n.to}
-                to={n.to}
-                end={n.end}
-                title={rail ? n.label : undefined}
-                className={clsx(
-                  'relative flex items-center rounded-xl text-sm font-medium transition-all duration-150',
-                  rail ? 'justify-center h-10 w-full' : 'gap-3 px-3 h-10',
-                  active
-                    ? 'bg-white/14 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.14)] ring-1 ring-white/10'
-                    : 'text-white/60 hover:text-white hover:bg-white/8',
-                )}
-              >
-                <n.icon className="size-[18px] shrink-0" />
-                {!rail && <span className="flex-1 truncate">{n.label}</span>}
-                {!rail && n.to === '/certificates' && attention > 0 && (
-                  <span className="rounded-md bg-crit-500/25 text-crit-200 px-1.5 text-[11px] font-semibold tnum">{attention}</span>
-                )}
-              </NavLink>
-            );
-          })}
-          {!rail && (
-            <div className="pt-4 pb-1 px-3 text-[11px] font-medium uppercase tracking-[0.14em] text-white/40">Automation</div>
+          {rail ? (
+            <NavRail groups={GROUPS} railWidth={SIDEBAR_COLLAPSED} attention={attention} waiting={waiting.data ?? 0} />
+          ) : (
+            <ExpandedNav groups={GROUPS} pathname={location.pathname} attention={attention} waiting={waiting.data ?? 0} />
           )}
-          {rail && <div className="my-2 mx-2 border-t border-white/10" />}
-          {AUTOMATION.map((n) => {
-            const active = location.pathname === n.to || location.pathname.startsWith(`${n.to}/`);
-            const badge = n.to === '/approvals' ? waiting.data ?? 0 : 0;
-            return (
-              <NavLink
-                key={n.to}
-                to={n.to}
-                title={rail ? n.label : undefined}
-                className={clsx(
-                  'relative flex items-center rounded-xl text-sm font-medium transition-all duration-150',
-                  rail ? 'justify-center h-10 w-full' : 'gap-3 px-3 h-10',
-                  active
-                    ? 'bg-white/14 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.14)] ring-1 ring-white/10'
-                    : 'text-white/60 hover:text-white hover:bg-white/8',
-                )}
-              >
-                <n.icon className="size-[18px] shrink-0" />
-                {!rail && <span className="flex-1 truncate">{n.label}</span>}
-                {!rail && badge > 0 && (
-                  <span className="rounded-md bg-warn-500/25 text-warn-100 px-1.5 text-[11px] font-semibold tnum">{badge}</span>
-                )}
-              </NavLink>
-            );
-          })}
         </nav>
 
         <div className={clsx('relative', rail ? 'p-2' : 'p-3')}>

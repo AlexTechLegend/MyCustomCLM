@@ -77,6 +77,13 @@ export const pipelineRunBody = z.object({
   dryRun: z.boolean().optional(),
 });
 
+export const pipelinePreflightBody = z.object({
+  certificateId: z.string().optional(),
+  hostId: z.string().optional(),
+  renewalId: z.string().optional(),
+  params: z.record(z.unknown()).optional(),
+});
+
 export const approvalBody = z.object({
   note: z.string().optional(),
 });
@@ -85,6 +92,32 @@ export const discoveryScanBody = z.object({
   targets: z.array(z.string().min(1)).min(1),
   ports: z.array(z.number().int().positive()).optional(),
   concurrency: z.number().int().positive().optional(),
+  delayMs: z.number().int().nonnegative().optional(),
+  timeoutMs: z.number().int().positive().optional(),
+});
+
+export const agentResultBody = z.object({
+  jobId: z.string().min(1),
+  stdout: z.string().optional().default(''),
+  stderr: z.string().optional().default(''),
+  exitCode: z.number().int().optional().default(0),
+  error: z.string().optional(),
+  files: z.array(z.object({ path: z.string(), b64: z.string() })).optional(),
+  stat: z
+    .object({
+      isFile: z.boolean(),
+      isDirectory: z.boolean(),
+      size: z.number(),
+    })
+    .nullable()
+    .optional(),
+  exists: z.boolean().optional(),
+});
+
+export const agentStreamBody = z.object({
+  jobId: z.string().min(1),
+  channel: z.enum(['stdout', 'stderr']),
+  chunk: z.string(),
 });
 
 const gridCols = z.union([z.literal(12), z.literal(24), z.literal(36)]);
@@ -130,6 +163,8 @@ export type HostBody = z.infer<typeof hostBody>;
 export type RenewBody = z.infer<typeof renewBody>;
 export type InstantiateBody = z.infer<typeof instantiateBody>;
 export type PipelineRunBody = z.infer<typeof pipelineRunBody>;
+export type PipelinePreflightBody = z.infer<typeof pipelinePreflightBody>;
 export type ApprovalBody = z.infer<typeof approvalBody>;
 export type DiscoveryScanBody = z.infer<typeof discoveryScanBody>;
+export type AgentResultBody = z.infer<typeof agentResultBody>;
 export type DashboardTemplateStoreBody = z.infer<typeof dashboardTemplateStoreBody>;

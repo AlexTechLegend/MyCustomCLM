@@ -59,6 +59,17 @@ export function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
+/** Timing-safe string compare via SHA-256 so length differences do not leak. */
+export function safeEqualString(a: string, b: string): boolean {
+  const left = createHash('sha256').update(a).digest();
+  const right = createHash('sha256').update(b).digest();
+  try {
+    return timingSafeEqual(left, right);
+  } catch {
+    return false;
+  }
+}
+
 export function randomToken(bytes = 32): string {
   return randomBytes(bytes).toString('base64url');
 }

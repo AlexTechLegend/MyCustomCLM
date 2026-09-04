@@ -1,12 +1,6 @@
 import { db, newId, nowIso, parseJson } from '../db.js';
 import type { AgentStatus, Host, HostPlatform, HostTransport } from '../types.js';
 
-const TRANSPORTS: HostTransport[] = ['none', 'winrm', 'ssh', 'agent'];
-
-function coerceTransport(v: unknown): HostTransport {
-  return TRANSPORTS.includes(v as HostTransport) ? (v as HostTransport) : 'none';
-}
-
 interface HostRow {
   id: string;
   name: string;
@@ -22,9 +16,13 @@ interface HostRow {
   tags: string;
   created_at: string;
   updated_at: string;
-  transport?: string;
-  transport_config?: string;
+  transport?: string | null;
+  transport_config?: string | null;
   agent_token_credential_id?: string | null;
+}
+
+function parseTransport(value: unknown): HostTransport {
+  return value === 'winrm' || value === 'ssh' || value === 'agent' ? value : 'none';
 }
 
 function mapRow(r: HostRow): Host {
@@ -43,8 +41,8 @@ function mapRow(r: HostRow): Host {
     tags: parseJson(r.tags, []),
     createdAt: r.created_at,
     updatedAt: r.updated_at,
-    transport: coerceTransport(r.transport),
-    transportConfig: parseJson(r.transport_config ?? '{}', {}),
+    transport: parseTransport(r.transport),
+    transportConfig: parseJson(r.transport_config, {}),
     agentTokenCredentialId: r.agent_token_credential_id ?? null,
   };
 }
@@ -80,7 +78,7 @@ export function createHost(input: Partial<Host>): Host {
     tags: JSON.stringify(input.tags ?? []),
     created_at: now,
     updated_at: now,
-    transport: coerceTransport(input.transport),
+    transport: parseTransport(input.transport),
     transport_config: JSON.stringify(input.transportConfig ?? {}),
     agent_token_credential_id: input.agentTokenCredentialId ?? null,
   };
@@ -121,12 +119,21 @@ export function updateHost(id: string, input: Partial<Host>): Host | null {
       input.agentLastSeen !== undefined ? input.agentLastSeen : existing.agentLastSeen,
       input.notes ?? existing.notes,
       JSON.stringify(input.tags ?? existing.tags),
-      coerceTransport(input.transport ?? existing.transport),
+      parseTransport(input.transport ?? existing.transport),
       JSON.stringify(input.transportConfig ?? existing.transportConfig ?? {}),
-      input.agentTokenCredentialId !== undefined ? input.agentTokenCredentialId : (existing.agentTokenCredentialId ?? null),
+      input.agentTokenCredentialId !== undefined ? input.agentTokenCredentialId : existing.agentTokenCredentialId ?? null,
       nowIso(),
       id,
     );
+  return getHost(id);
+}
+
+/** Mark a host's installed agent as online after a successful poll/result. */
+export function markHostAgentSeen(id: string): Host | null {
+  const existing = getHost(id);
+  if (!existing) return null;
+  const now = nowIso();
+  db().prepare(`UPDATE hosts SET agent_status = ?, agent_last_seen = ?, updated_at = ? WHERE id = ?`).run('online', now, now, id);
   return getHost(id);
 }
 

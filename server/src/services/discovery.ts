@@ -1,3 +1,4 @@
+import { X509Certificate } from 'node:crypto';
 import { db, newId, nowIso } from '../db.js';
 import type { DiscoveryResult } from '../types.js';
 import { listCertificates } from './certificates.js';
@@ -12,6 +13,8 @@ export interface DiscoveryHit {
   port: number;
   fingerprintSha256: string;
   commonName: string;
+  subject?: string;
+  issuer?: string;
   notAfter?: string;
   status: DiscoveryStatus;
   certificateId?: string;
@@ -26,6 +29,7 @@ export interface DiscoveryScanInput {
   delayMs?: number;
   signal?: AbortSignal;
   timeoutMs?: number;
+  scanId?: string;
 }
 
 const MAX_EXPANDED = 4096;
@@ -68,8 +72,8 @@ export function expandCidr(cidr: string, remaining = MAX_EXPANDED): string[] {
 }
 
 /**
- * Scan targets, harvest served certificates, diff against the inventory.
- * Results are written to `discovery_results`. Scheduler job type is still deferred.
+ * Scan targets, harvest served certificates, diff against the inventory,
+ * and persist every hit to `discovery_results`.
  */
 export async function runDiscoveryScan(input: DiscoveryScanInput): Promise<DiscoveryHit[]> {
   const hosts = expandDiscoveryTargets(input.targets);
@@ -93,7 +97,11 @@ export async function runDiscoveryScan(input: DiscoveryScanInput): Promise<Disco
       if (delayMs) await new Promise((r) => setTimeout(r, delayMs));
       try {
         const harvested = await harvestTlsCertificate({ host: item.host, port: item.port, timeoutMs });
-        hits.push(classifyHit(item.host, item.port, harvested.fingerprint, harvested.commonName, inventory));
+        const identity = identityFromPem(harvested.pem);
+        hits.push({
+          ...classifyHit(item.host, item.port, harvested.fingerprint, harvested.commonName, inventory),
+          ...identity,
+        });
       } catch (err) {
         if (isRefused(err)) continue;
         hits.push({
@@ -109,7 +117,148 @@ export async function runDiscoveryScan(input: DiscoveryScanInput): Promise<Disco
   }
 
   await Promise.all(Array.from({ length: Math.min(concurrency, work.length) }, () => worker()));
-  return hits.filter((h) => h.fingerprintSha256 || h.error);
+  const kept = hits.filter((h) => h.fingerprintSha256 || h.error);
+  persistDiscoveryHits(input.scanId ?? newId('scan'), kept);
+  return kept;
+}
+
+export function persistDiscoveryHits(scanId: string, hits: DiscoveryHit[]): DiscoveryResult[] {
+  const now = nowIso();
+  const out: DiscoveryResult[] = [];
+  const lookup = db().prepare(
+    `SELECT id, first_seen FROM discovery_results WHERE address = ? AND port = ? AND fingerprint_sha256 = ?`,
+  );
+  const insert = db().prepare(
+    `INSERT INTO discovery_results
+      (id, scan_id, address, port, hostname, subject, issuer, not_after, fingerprint_sha256, matched_certificate_id, first_seen, last_seen)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  );
+  const update = db().prepare(
+    `UPDATE discovery_results
+        SET scan_id = ?, hostname = ?, subject = ?, issuer = ?, not_after = ?, matched_certificate_id = ?, last_seen = ?
+      WHERE id = ?`,
+  );
+
+  for (const hit of hits) {
+    const fp = hit.fingerprintSha256 || '';
+    const existing = lookup.get(hit.host, hit.port, fp) as { id: string; first_seen: string } | undefined;
+    if (existing) {
+      update.run(
+        scanId,
+        hit.commonName || '',
+        hit.subject || '',
+        hit.issuer || '',
+        hit.notAfter ?? null,
+        hit.certificateId ?? null,
+        now,
+        existing.id,
+      );
+      out.push({
+        id: existing.id,
+        scanId,
+        address: hit.host,
+        port: hit.port,
+        hostname: hit.commonName || '',
+        subject: hit.subject || '',
+        issuer: hit.issuer || '',
+        notAfter: hit.notAfter ?? null,
+        fingerprintSha256: fp,
+        matchedCertificateId: hit.certificateId ?? null,
+        firstSeen: existing.first_seen,
+        lastSeen: now,
+      });
+    } else {
+      const id = newId('dsc');
+      insert.run(
+        id,
+        scanId,
+        hit.host,
+        hit.port,
+        hit.commonName || '',
+        hit.subject || '',
+        hit.issuer || '',
+        hit.notAfter ?? null,
+        fp,
+        hit.certificateId ?? null,
+        now,
+        now,
+      );
+      out.push({
+        id,
+        scanId,
+        address: hit.host,
+        port: hit.port,
+        hostname: hit.commonName || '',
+        subject: hit.subject || '',
+        issuer: hit.issuer || '',
+        notAfter: hit.notAfter ?? null,
+        fingerprintSha256: fp,
+        matchedCertificateId: hit.certificateId ?? null,
+        firstSeen: now,
+        lastSeen: now,
+      });
+    }
+  }
+  return out;
+}
+
+export function listDiscoveryResults(opts: { scanId?: string; limit?: number } = {}): DiscoveryResult[] {
+  const limit = Math.min(2000, Math.max(1, opts.limit ?? 500));
+  const rows = (
+    opts.scanId
+      ? db()
+          .prepare(
+            `SELECT * FROM discovery_results WHERE scan_id = ? ORDER BY last_seen DESC, address, port LIMIT ?`,
+          )
+          .all(opts.scanId, limit)
+      : db().prepare(`SELECT * FROM discovery_results ORDER BY last_seen DESC, address, port LIMIT ?`).all(limit)
+  ) as DiscoveryRow[];
+  return rows.map(mapDiscoveryRow);
+}
+
+interface DiscoveryRow {
+  id: string;
+  scan_id: string;
+  address: string;
+  port: number;
+  hostname: string;
+  subject: string;
+  issuer: string;
+  not_after: string | null;
+  fingerprint_sha256: string;
+  matched_certificate_id: string | null;
+  first_seen: string;
+  last_seen: string;
+}
+
+function mapDiscoveryRow(r: DiscoveryRow): DiscoveryResult {
+  return {
+    id: r.id,
+    scanId: r.scan_id,
+    address: r.address,
+    port: r.port,
+    hostname: r.hostname,
+    subject: r.subject,
+    issuer: r.issuer,
+    notAfter: r.not_after,
+    fingerprintSha256: r.fingerprint_sha256,
+    matchedCertificateId: r.matched_certificate_id,
+    firstSeen: r.first_seen,
+    lastSeen: r.last_seen,
+  };
+}
+
+function identityFromPem(pem: string): Pick<DiscoveryHit, 'subject' | 'issuer' | 'notAfter'> {
+  try {
+    const x509 = new X509Certificate(pem);
+    return {
+      subject: x509.subject,
+      issuer: x509.issuer,
+      notAfter: new Date(x509.validTo).toISOString(),
+    };
+  } catch {
+    return {};
+  }
 }
 
 function classifyHit(
@@ -154,109 +303,6 @@ function isRefused(err: unknown): boolean {
 }
 
 void normalizeFingerprint;
-
-interface DiscoveryRow {
-  id: string;
-  scan_id: string;
-  address: string;
-  port: number;
-  hostname: string;
-  subject: string;
-  issuer: string;
-  not_after: string | null;
-  fingerprint_sha256: string;
-  matched_certificate_id: string | null;
-  first_seen: string;
-  last_seen: string;
-}
-
-function mapDiscovery(r: DiscoveryRow): DiscoveryResult {
-  return {
-    id: r.id,
-    scanId: r.scan_id,
-    address: r.address,
-    port: r.port,
-    hostname: r.hostname,
-    subject: r.subject,
-    issuer: r.issuer,
-    notAfter: r.not_after,
-    fingerprintSha256: r.fingerprint_sha256,
-    matchedCertificateId: r.matched_certificate_id,
-    firstSeen: r.first_seen,
-    lastSeen: r.last_seen,
-  };
-}
-
-export function persistDiscoveryHits(scanId: string, hits: DiscoveryHit[]): DiscoveryResult[] {
-  const now = nowIso();
-  const out: DiscoveryResult[] = [];
-  const find = db().prepare(
-    `SELECT * FROM discovery_results WHERE address = ? AND port = ? AND fingerprint_sha256 = ? ORDER BY last_seen DESC LIMIT 1`,
-  );
-  const insert = db().prepare(
-    `INSERT INTO discovery_results
-      (id, scan_id, address, port, hostname, subject, issuer, not_after, fingerprint_sha256, matched_certificate_id, first_seen, last_seen)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  );
-  const touch = db().prepare(
-    `UPDATE discovery_results SET scan_id = ?, hostname = ?, subject = ?, not_after = ?, matched_certificate_id = ?, last_seen = ? WHERE id = ?`,
-  );
-  for (const hit of hits) {
-    const existing = find.get(hit.host, hit.port, hit.fingerprintSha256) as DiscoveryRow | undefined;
-    if (existing) {
-      touch.run(scanId, hit.host, hit.commonName, hit.notAfter ?? existing.not_after, hit.certificateId ?? existing.matched_certificate_id, now, existing.id);
-      out.push(
-        mapDiscovery({
-          ...existing,
-          scan_id: scanId,
-          hostname: hit.host,
-          subject: hit.commonName,
-          not_after: hit.notAfter ?? existing.not_after,
-          matched_certificate_id: hit.certificateId ?? existing.matched_certificate_id,
-          last_seen: now,
-        }),
-      );
-      continue;
-    }
-    const id = newId('dsc');
-    insert.run(
-      id,
-      scanId,
-      hit.host,
-      hit.port,
-      hit.host,
-      hit.commonName,
-      '',
-      hit.notAfter ?? null,
-      hit.fingerprintSha256,
-      hit.certificateId ?? null,
-      now,
-      now,
-    );
-    out.push({
-      id,
-      scanId,
-      address: hit.host,
-      port: hit.port,
-      hostname: hit.host,
-      subject: hit.commonName,
-      issuer: '',
-      notAfter: hit.notAfter ?? null,
-      fingerprintSha256: hit.fingerprintSha256,
-      matchedCertificateId: hit.certificateId ?? null,
-      firstSeen: now,
-      lastSeen: now,
-    });
-  }
-  return out;
-}
-
-export function listDiscoveryResults(scanId?: string): DiscoveryResult[] {
-  const rows = scanId
-    ? (db().prepare('SELECT * FROM discovery_results WHERE scan_id = ? ORDER BY last_seen DESC').all(scanId) as DiscoveryRow[])
-    : (db().prepare('SELECT * FROM discovery_results ORDER BY last_seen DESC LIMIT 500').all() as DiscoveryRow[]);
-  return rows.map(mapDiscovery);
-}
 
 export function latestDiscoveryScanId(): string | null {
   const row = db().prepare('SELECT scan_id FROM discovery_results ORDER BY last_seen DESC LIMIT 1').get() as { scan_id: string } | undefined;

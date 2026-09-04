@@ -13,12 +13,9 @@ export interface ResolvedTransport {
 }
 
 /**
- * Resolve the transport for a host.
- *
- * Task 8 has not added `transport` / `transport_config` /
- * `agent_token_credential_id` to `hosts` yet. We probe those columns
- * inside try/catch and default to `local` when they are missing. We do
- * not stub the columns.
+ * Resolve the transport for a host from `hosts.transport`,
+ * `transport_config`, and `agent_token_credential_id`.
+ * Unknown or `none` maps to the local filesystem adapter.
  */
 export async function resolveTransport(hostId: string | null | undefined): Promise<ResolvedTransport> {
   if (!hostId) {
