@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, Landmark, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useToast } from '@/components/Toast';
+import { AppearanceCard } from '@/components/AppearanceCard';
 import { Button, Card, CardHeader, CodeBlock, ErrorBox, Field, Input, KeyValue, Loading, Modal, PageHeader } from '@/components/ui';
 import { setSetupDismissed, setupDismissed } from '@/lib/dashboardStore';
 import { api } from '@/lib/api';
@@ -118,6 +119,7 @@ export function Settings() {
         </div>
 
         <div className="space-y-6">
+          <AppearanceCard />
           <Card>
             <CardHeader title="System" />
             {system.data ? (

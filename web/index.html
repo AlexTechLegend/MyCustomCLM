@@ -11,6 +11,9 @@
         try {
           var t = localStorage.getItem('vigil:theme');
           if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+          var p = localStorage.getItem('vigil:palette');
+          var known = { steel: 1, console: 1, aubergine: 1, ember: 1, indigo: 1, arctic: 1, moss: 1, signal: 1, graphite: 1, parchment: 1 };
+          document.documentElement.setAttribute('data-palette', known[p] ? p : 'console');
         } catch (e) {}
       })();
     </script>
