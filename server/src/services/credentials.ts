@@ -1,6 +1,6 @@
 import { db, newId, nowIso } from '../db.js';
 import type { CredentialKind, CredentialMeta } from '../types.js';
-import { decryptSecret, encryptSecret } from './crypto.js';
+import { decryptSecret, encryptSecret, reencryptSecret } from './crypto.js';
 
 interface CredRow {
   id: string;
@@ -110,4 +110,30 @@ export function updateCredential(
 
 export function deleteCredential(id: string): boolean {
   return db().prepare('DELETE FROM credentials WHERE id = ?').run(id).changes > 0;
+}
+
+/** Re-encrypt every stored secret under a new key. Old key must decrypt every row. */
+export function rotateCredentialKeys(oldKey: Buffer, newKey: Buffer): number {
+  const rows = db().prepare('SELECT id, secret_encrypted, secret_iv, secret_tag FROM credentials').all() as CredRow[];
+  let n = 0;
+  const update = db().prepare(
+    `UPDATE credentials SET secret_encrypted = ?, secret_iv = ?, secret_tag = ?, updated_at = ? WHERE id = ?`,
+  );
+  const tx = () => {
+    for (const row of rows) {
+      if (!row.secret_encrypted) continue;
+      const enc = reencryptSecret(row.secret_encrypted, row.secret_iv, row.secret_tag, oldKey, newKey);
+      update.run(enc.ciphertext, enc.iv, enc.tag, nowIso(), row.id);
+      n += 1;
+    }
+  };
+  db().exec('BEGIN');
+  try {
+    tx();
+    db().exec('COMMIT');
+  } catch (err) {
+    db().exec('ROLLBACK');
+    throw err;
+  }
+  return n;
 }

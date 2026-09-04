@@ -435,6 +435,30 @@ function migrate(d: Db) {
       owner TEXT NOT NULL,
       expires_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS instance_leases (
+      id TEXT PRIMARY KEY CHECK (id = 'scheduler'),
+      owner TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS discovery_results (
+      id TEXT PRIMARY KEY,
+      scan_id TEXT NOT NULL,
+      address TEXT NOT NULL,
+      port INTEGER NOT NULL,
+      hostname TEXT NOT NULL DEFAULT '',
+      subject TEXT NOT NULL DEFAULT '',
+      issuer TEXT NOT NULL DEFAULT '',
+      not_after TEXT,
+      fingerprint_sha256 TEXT NOT NULL DEFAULT '',
+      matched_certificate_id TEXT,
+      first_seen TEXT NOT NULL,
+      last_seen TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_discovery_scan ON discovery_results(scan_id);
+    CREATE INDEX IF NOT EXISTS idx_discovery_fp ON discovery_results(fingerprint_sha256);
   `);
   // Additive migrations for databases created before these columns existed.
   ensureColumn(d, 'certificates', 'destination_override', "TEXT NOT NULL DEFAULT ''");
@@ -445,6 +469,9 @@ function migrate(d: Db) {
   ensureColumn(d, 'profiles', 'scope', "TEXT NOT NULL DEFAULT 'general'");
   ensureColumn(d, 'profiles', 'server_tags', "TEXT NOT NULL DEFAULT '[]'");
   ensureColumn(d, 'profiles', 'certificate_ids', "TEXT NOT NULL DEFAULT '[]'");
+  ensureColumn(d, 'hosts', 'transport', "TEXT NOT NULL DEFAULT 'none'");
+  ensureColumn(d, 'hosts', 'transport_config', "TEXT NOT NULL DEFAULT '{}'");
+  ensureColumn(d, 'hosts', 'agent_token_credential_id', 'TEXT');
 }
 
 function ensureColumn(d: Db, table: string, column: string, ddl: string) {
@@ -476,4 +503,10 @@ export function parseJson<T>(value: unknown, fallback: T): T {
 export function ensureDataDirWritable() {
   ensureDirs();
   fs.accessSync(config.dataDir, fs.constants.W_OK);
+}
+
+/** Drop the process-wide handle so the next db() opens config.dbPath again. */
+export function resetDbHandle() {
+  _db = null;
+  _backend = null;
 }

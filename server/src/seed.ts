@@ -6,15 +6,23 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { config, ensureDirs, preflightProblems } from './config.js';
+import { config, ensureDirs, preflightProblems, secretKeyMaterial } from './config.js';
 import { db, dbBackend, newId, nowIso } from './db.js';
 import { createCa, createCsr, generateKey, newLog, parseCertificate, readCaCert, signWithCa, selfSign, type Material } from './openssl.js';
-import { insertCertificate } from './services/certificates.js';
+import { createUser } from './services/auth.js';
+import { attachCertificateBlueprint, insertCertificate } from './services/certificates.js';
+import { createBlueprint } from './services/blueprints.js';
+import { createCredential } from './services/credentials.js';
+import { randomToken } from './services/crypto.js';
 import { recordEvent } from './services/events.js';
-import { createIdentityTemplate } from './services/identities.js';
+import { createHost } from './services/hosts.js';
+import { createIdentityTemplate, listIdentityTemplates } from './services/identities.js';
+import { enqueueJob } from './services/jobs.js';
+import { STAGING_PRESET_ID, ensureBuiltinPipelines } from './services/pipelines.js';
 import { createProfile } from './services/profiles.js';
 import { saveSettings } from './services/settings.js';
 import { createTagGroup } from './services/tags.js';
+import { createWindow } from './services/windows.js';
 import type { CertSource, EventType } from './types.js';
 
 const DAY = 86400000;
@@ -190,9 +198,9 @@ async function main() {
   config.caDir = realCaDir;
 
   console.log('Creating Vigil internal CA…');
-  const log = newLog();
-  await createCa({ commonName: 'Contoso Ltd Internal CA', organisation: 'Contoso Ltd', days: 3650 }, log);
-  recordEvent({ type: 'ca', title: 'Created internal CA', detail: 'RSA 4096, SHA-256', commands: log.commands, minutesSaved: 30, createdAt: new Date(Date.now() - 170 * DAY).toISOString() });
+  const caLog = newLog();
+  await createCa({ commonName: 'Contoso Ltd Internal CA', organisation: 'Contoso Ltd', days: 3650 }, caLog);
+  recordEvent({ type: 'ca', title: 'Created internal CA', detail: 'RSA 4096, SHA-256', commands: caLog.commands, minutesSaved: 30, createdAt: new Date(Date.now() - 170 * DAY).toISOString() });
   const internalCa = await readCaCert();
 
   console.log('Issuing certificates…');
@@ -285,6 +293,121 @@ async function main() {
   }
 
   await fs.rm(enterpriseDir, { recursive: true, force: true });
+
+  console.log('Seeding automation estate…');
+  ensureBuiltinPipelines();
+  const adminPassword = randomToken(12);
+  const operatorPassword = randomToken(12);
+  createUser({ username: 'admin', password: adminPassword, displayName: 'Vigil Admin', role: 'admin', email: 'admin@contoso.com' });
+  createUser({ username: 'operator', password: operatorPassword, displayName: 'Vigil Operator', role: 'operator', email: 'ops@contoso.com' });
+  console.log(`  One-time passwords (not stored in plaintext):`);
+  console.log(`    admin    / ${adminPassword}`);
+  console.log(`    operator / ${operatorPassword}`);
+
+  if (secretKeyMaterial()) {
+    createCredential({
+      name: 'WinRM deploy account',
+      kind: 'password',
+      username: 'svc-vigil',
+      secret: randomToken(16),
+      description: 'Demo credential — secret never returned by the API.',
+    });
+  } else {
+    console.log('  (no VIGIL_SECRET_KEY — skipped credential seed)');
+  }
+
+  const web01 = createHost({ name: 'web01.prod', hostname: 'web01.contoso.local', address: '10.20.0.11', platform: 'windows', environment: 'prod', owner: 'platform', tags: ['iis', 'web', 'prod'] });
+  const web02 = createHost({ name: 'web02.prod', hostname: 'web02.contoso.local', address: '10.20.0.12', platform: 'windows', environment: 'prod', owner: 'platform', tags: ['iis', 'web', 'prod'] });
+  createHost({ name: 'app01.prod', hostname: 'app01.contoso.local', address: '10.20.0.21', platform: 'linux', environment: 'prod', owner: 'platform', tags: ['nginx', 'prod'] });
+  createHost({ name: 'web01.staging', hostname: 'web01.staging.contoso.local', address: '10.30.0.11', platform: 'windows', environment: 'staging', owner: 'platform', tags: ['iis', 'staging'] });
+  createHost({ name: 'app01.staging', hostname: 'app01.staging.contoso.local', address: '10.30.0.21', platform: 'linux', environment: 'staging', owner: 'platform', tags: ['nginx', 'staging'] });
+
+  const window = createWindow({
+    name: 'Wednesday 22:00 UTC',
+    weekday: 3,
+    startTime: '22:00',
+    endTime: '23:30',
+    timezone: 'UTC',
+  });
+
+  const identities = listIdentityTemplates();
+  const prodId = identities.find((i) => /Production/.test(i.name))?.id ?? null;
+  const iisBp = createBlueprint({
+    name: 'Standard IIS web server',
+    description: 'Public IIS bindings, internal CA, Wednesday window.',
+    identityTemplateId: prodId,
+    profileIds: [profiles.iis.id],
+    issuanceMethod: 'internal-ca',
+    keyMode: 'rsa-2048',
+    validityDays: 397,
+    maintenanceWindowId: window.id,
+    renewalPolicy: { nthWindowBeforeExpiry: 2, requiresApproval: false },
+  });
+  const nginxBp = createBlueprint({
+    name: 'Linux nginx staged swap',
+    description: 'Staging → backup → swap → verify → run-commands via the built-in pipeline.',
+    identityTemplateId: prodId,
+    profileIds: [profiles.nginx.id],
+    issuanceMethod: 'internal-ca',
+    keyMode: 'rsa-2048',
+    validityDays: 397,
+    pipelineId: STAGING_PRESET_ID,
+    maintenanceWindowId: window.id,
+    renewalPolicy: { nthWindowBeforeExpiry: 1, requiresApproval: true },
+  });
+
+  const intranet = certIds.find((c) => c.name === 'intranet.contoso.local');
+  if (intranet) {
+    attachCertificateBlueprint(intranet.id, iisBp.id, iisBp.version, ['DNS:intranet.contoso.local', 'DNS:drifted.contoso.local']);
+  }
+  const portal = certIds.find((c) => c.name === 'portal.contoso.com');
+  if (portal) {
+    attachCertificateBlueprint(portal.id, nginxBp.id, nginxBp.version, ['DNS:portal.contoso.com']);
+  }
+
+  const nowIsoStamp = nowIso();
+  const runOk = newId('run');
+  const runQueued = newId('run');
+  db()
+    .prepare(
+      `INSERT INTO pipeline_runs (id, pipeline_id, renewal_id, certificate_id, host_id, state, steps, params, approved_by, approved_at, started_at, finished_at, created_at)
+       VALUES (?, ?, NULL, ?, ?, 'succeeded', ?, '{}', 'seed', ?, ?, ?, ?)`,
+    )
+    .run(
+      runOk,
+      STAGING_PRESET_ID,
+      portal?.id ?? null,
+      web01.id,
+      JSON.stringify([{ stepId: 'swap', type: 'swap', name: 'Atomic swap', state: 'succeeded', startedAt: nowIsoStamp, finishedAt: nowIsoStamp, stdout: 'seed', stderr: '', error: null, outputs: {} }]),
+      nowIsoStamp,
+      nowIsoStamp,
+      nowIsoStamp,
+      nowIsoStamp,
+    );
+  db()
+    .prepare(
+      `INSERT INTO pipeline_runs (id, pipeline_id, renewal_id, certificate_id, host_id, state, steps, params, approved_by, approved_at, started_at, finished_at, created_at)
+       VALUES (?, ?, NULL, ?, ?, 'succeeded', ?, '{}', 'seed', ?, ?, ?, ?)`,
+    )
+    .run(
+      runQueued,
+      STAGING_PRESET_ID,
+      intranet?.id ?? null,
+      web02.id,
+      JSON.stringify([{ stepId: 'backup', type: 'backup', name: 'Backup', state: 'succeeded', startedAt: nowIsoStamp, finishedAt: nowIsoStamp, stdout: 'seed', stderr: '', error: null, outputs: {} }]),
+      nowIsoStamp,
+      nowIsoStamp,
+      nowIsoStamp,
+      nowIsoStamp,
+    );
+
+  enqueueJob({
+    type: 'pipeline-run',
+    certificateId: portal?.id ?? null,
+    payload: { pipelineId: STAGING_PRESET_ID, hostId: web01.id, dryRun: true },
+    priority: 40,
+  });
+
   console.log(`\n✔ Seed complete at ${nowIso()}. Demo destinations under ${destRoot}`);
   console.log('  Next: npm run dev  →  http://localhost:5173');
 }

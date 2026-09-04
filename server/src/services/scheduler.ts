@@ -1,6 +1,7 @@
-import { hostname } from 'node:os';
 import { config } from '../config.js';
 import { db, nowIso } from '../db.js';
+import { currentLeader, tryAcquireLeadership } from '../lib/leader.js';
+import { log, runWithContext } from '../lib/logger.js';
 import type { Job, SchedulerHeartbeat } from '../types.js';
 import { getBlueprint } from './blueprints.js';
 import { listDueForRenewal } from './certificates.js';
@@ -11,14 +12,16 @@ import { emitNotification } from './notifications.js';
 import { executePipeline } from './pipelines.js';
 import { runRenewalJob } from './renewals.js';
 
-const OWNER = `vigil@${hostname()}:${process.pid}`;
+function owner(): string {
+  return config.instanceId;
+}
 
 const heartbeat: SchedulerHeartbeat = {
   lastTickAt: null,
   lastEnqueueAt: null,
   lastClaimAt: null,
   ticks: 0,
-  owner: OWNER,
+  owner: '',
   enabled: config.schedulerEnabled,
 };
 
@@ -35,7 +38,7 @@ export function getSchedulerHeartbeat(): SchedulerHeartbeat {
   const row = db().prepare('SELECT value FROM settings WHERE key = ?').get('scheduler.heartbeat') as { value: string } | undefined;
   if (!row) return { ...heartbeat, enabled: config.schedulerEnabled };
   try {
-    return { ...JSON.parse(row.value), enabled: config.schedulerEnabled, owner: heartbeat.owner || OWNER };
+    return { ...JSON.parse(row.value), enabled: config.schedulerEnabled, owner: heartbeat.owner || owner() };
   } catch {
     return { ...heartbeat, enabled: config.schedulerEnabled };
   }
@@ -117,17 +120,26 @@ export async function schedulerTick(): Promise<SchedulerHeartbeat> {
     heartbeat.ticks += 1;
     heartbeat.lastTickAt = nowIso();
     heartbeat.enabled = config.schedulerEnabled;
-    heartbeat.owner = OWNER;
+    heartbeat.owner = owner();
+    const leader = tryAcquireLeadership(owner());
+    const held = currentLeader();
+    heartbeat.leader = leader;
+    heartbeat.leaderOwner = held?.owner ?? null;
+    if (!leader) {
+      persistHeartbeat();
+      return { ...heartbeat };
+    }
     reclaimExpiredLeases();
     enqueueDueRenewals();
-    const claimed = claimJobs(OWNER, config.schedulerBatchSize);
+    const claimed = claimJobs(owner(), config.schedulerBatchSize);
     if (claimed.length) heartbeat.lastClaimAt = nowIso();
     persistHeartbeat();
     for (const job of claimed) {
       try {
-        await handleJob(job);
+        await runWithContext({ jobId: job.id }, () => handleJob(job));
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        log.error('job failed', { jobId: job.id, error: message });
         failJob(job.id, message);
         emitNotification('renewal.failed', { jobId: job.id, type: job.type, error: message });
       }
@@ -143,9 +155,11 @@ export function startScheduler(): void {
   if (!config.schedulerEnabled) {
     heartbeat.enabled = false;
     persistHeartbeat();
+    log.info('scheduler disabled (VIGIL_SCHEDULER=0)');
     return;
   }
   if (timer) return;
+  log.info('scheduler starting', { owner: owner(), intervalMs: config.schedulerIntervalMs });
   void schedulerTick();
   timer = setInterval(() => {
     void schedulerTick();
