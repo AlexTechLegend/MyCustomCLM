@@ -1,4 +1,5 @@
 import { config } from '../config.js';
+import { AGENT_WIRE_FORMAT } from '../services/transport/agent.js';
 
 /** Hand-maintained OpenAPI 3 document. The web agent can generate a client from GET /api/openapi.json. */
 export function openApiDocument() {
@@ -48,6 +49,19 @@ export function openApiDocument() {
       },
       '/jobs/{id}/cancel': { post: { summary: 'Cancel a job (operator)', security: [{ cookie: [] }], responses: { '200': { description: 'job' } } } },
       '/jobs/{id}/retry': { post: { summary: 'Retry a job (operator)', security: [{ cookie: [] }], responses: { '200': { description: 'job' } } } },
+      '/pipelines/preflight': {
+        post: { summary: 'Run pipeline preflight without executing (operator)', security: [{ cookie: [] }], requestBody: jsonBody('PipelinePreflight'), responses: { '200': { description: 'report' } } },
+      },
+      '/discovery': { get: { summary: 'List persisted discovery results', security: [{ cookie: [] }], responses: { '200': { description: 'results' } } } },
+      '/discovery/scan': {
+        post: { summary: 'Scan targets for TLS certificates (operator)', security: [{ cookie: [] }], requestBody: jsonBody('DiscoveryScan'), responses: { '201': { description: 'hits + persisted results' }, '429': { description: 'rate limited' } } },
+      },
+      '/connectors/adcs/templates': {
+        get: { summary: 'List ADCS templates (operator)', security: [{ cookie: [] }], responses: { '200': { description: 'templates' } } },
+      },
+      '/notifications/{id}/test': {
+        post: { summary: 'Send a test notification (admin)', security: [{ cookie: [] }], responses: { '200': { description: 'delivery' }, '404': { description: 'missing' } } },
+      },
       '/windows': {
         get: { summary: 'List maintenance windows', security: [{ cookie: [] }], responses: { '200': { description: 'windows' } } },
         post: { summary: 'Create window (operator)', security: [{ cookie: [] }], responses: { '201': { description: 'window' } } },
@@ -63,9 +77,11 @@ export function openApiDocument() {
         Renew: { type: 'object', required: ['method'], properties: { method: { type: 'string', enum: ['internal-ca', 'self-signed', 'csr'] } } },
         Instantiate: { type: 'object', required: ['commonName'], properties: { commonName: { type: 'string' }, sans: { type: 'array', items: { type: 'string' } } } },
         PipelineRun: { type: 'object', properties: { certificateId: { type: 'string' }, hostId: { type: 'string' }, dryRun: { type: 'boolean' } } },
+        PipelinePreflight: { type: 'object', properties: { certificateId: { type: 'string' }, hostId: { type: 'string' }, params: { type: 'object' } } },
+        DiscoveryScan: { type: 'object', required: ['targets'], properties: { targets: { type: 'array', items: { type: 'string' } }, ports: { type: 'array', items: { type: 'integer' } } } },
       },
     },
-    'x-vigil': { authEnabled: config.authEnabled, dataDir: config.dataDir },
+    'x-vigil': { authEnabled: config.authEnabled, dataDir: config.dataDir, agent: AGENT_WIRE_FORMAT },
   };
 }
 
