@@ -1,8 +1,9 @@
 import { Router } from 'express';
+import { newId } from '../db.js';
 import { takeRateLimit } from '../lib/rateLimit.js';
 import { discoveryScanBody, parseBody } from '../lib/schema.js';
 import { requireRole } from '../services/auth.js';
-import { listDiscoveryResults, runDiscoveryScan } from '../services/discovery.js';
+import { latestDiscoveryScanId, listDiscoveryResults, runDiscoveryScan } from '../services/discovery.js';
 import { str, wrap } from './http.js';
 
 export const discoveryRoutes = Router();
@@ -10,12 +11,14 @@ export const discoveryRoutes = Router();
 discoveryRoutes.get(
   '/discovery',
   wrap((req, res) => {
-    res.json(
-      listDiscoveryResults({
-        scanId: str(req.query.scanId),
+    const scanId = str(req.query.scanId);
+    res.json({
+      scanId: scanId ?? latestDiscoveryScanId(),
+      results: listDiscoveryResults({
+        scanId,
         limit: Number(req.query.limit) || 500,
       }),
-    );
+    });
   }),
 );
 
@@ -26,14 +29,16 @@ discoveryRoutes.post(
     const slot = takeRateLimit(`discovery-scan:${req.ip ?? 'local'}`, { max: 4, maxInflight: 1 });
     try {
       const body = parseBody(discoveryScanBody, req.body);
+      const scanId = newId('scan');
       const hits = await runDiscoveryScan({
         targets: body.targets,
         ports: body.ports,
         concurrency: body.concurrency,
         delayMs: body.delayMs,
         timeoutMs: body.timeoutMs,
+        scanId,
       });
-      res.status(201).json({ hits, results: listDiscoveryResults({ limit: 200 }) });
+      res.status(201).json({ scanId, hits, results: listDiscoveryResults({ scanId, limit: 200 }) });
     } finally {
       slot.release();
     }
