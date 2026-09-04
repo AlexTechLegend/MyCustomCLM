@@ -2,7 +2,9 @@ import clsx from 'clsx';
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { NavLink, useLocation } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import type { LucideIcon } from 'lucide-react';
+import { prefetchRoute, prefetchRouteChunk } from '@/lib/lazyRoutes';
 
 export type NavItem = {
   to: string;
@@ -48,6 +50,8 @@ export function ExpandedNav({
   attention: number;
   waiting: number;
 }) {
+  const queryClient = useQueryClient();
+  const onIntent = useCallback((to: string) => prefetchRoute(to, queryClient), [queryClient]);
   return (
     <>
       {groups.map((group, index) => (
@@ -68,6 +72,8 @@ export function ExpandedNav({
                 key={item.to}
                 to={item.to}
                 end={item.end}
+                onMouseEnter={() => onIntent(item.to)}
+                onFocus={() => onIntent(item.to)}
                 className={clsx(
                   'relative flex items-center gap-3 px-3 h-10 rounded-xl text-sm font-medium transition-all duration-150',
                   active
@@ -104,6 +110,8 @@ export function NavRail({
   waiting: number;
 }) {
   const location = useLocation();
+  const queryClient = useQueryClient();
+  const onIntent = useCallback((to: string) => prefetchRoute(to, queryClient), [queryClient]);
   const menuId = useId();
   const [openId, setOpenId] = useState<string | null>(null);
   const [pinned, setPinned] = useState(false);
@@ -168,6 +176,10 @@ export function NavRail({
     clearCloseTimer();
     if (openId === id) return;
     clearOpenTimer();
+    // Hovering the group icon is the earliest real signal of intent — the
+    // items inside aren't hoverable yet, so warm their chunks now rather
+    // than waiting for the flyout to open and the pointer to reach one.
+    for (const item of groups.find((g) => g.id === id)?.items ?? []) prefetchRouteChunk(item.to);
     openTimer.current = window.setTimeout(() => openGroup(id, false), OPEN_DELAY_MS);
   };
 
@@ -359,6 +371,8 @@ export function NavRail({
                   end={item.end}
                   role="menuitem"
                   tabIndex={-1}
+                  onMouseEnter={() => onIntent(item.to)}
+                  onFocus={() => onIntent(item.to)}
                   className={clsx(
                     'flex items-center gap-3 px-3 h-10 text-sm font-medium',
                     active
