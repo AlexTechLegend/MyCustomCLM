@@ -1,13 +1,11 @@
-import { spawn } from 'node:child_process';
 import type { StepHandler } from './types.js';
 import { resolvePathTemplate } from './types.js';
 import { revealCredentialSecret } from '../credentials.js';
 
-const MAX_CAPTURE = 64 * 1024;
-
 /**
  * Spawn with an argument array — never a concatenated shell string.
  * Shell selection only picks the interpreter binary; args remain an array.
+ * Execution goes through the host Transport so the same step is local or remote.
  */
 export const runCommandStep: StepHandler = {
   type: 'run-command',
@@ -30,8 +28,10 @@ export const runCommandStep: StepHandler = {
       };
     }
 
-    // Optional credential — exposed only as env VIGIL_CRED_* for the child, never argv.
-    const env = { ...process.env };
+    const env: Record<string, string> = {};
+    for (const [k, v] of Object.entries(process.env)) {
+      if (v !== undefined) env[k] = v;
+    }
     if (step.config.credentialId) {
       const secret = revealCredentialSecret(String(step.config.credentialId));
       if (secret) {
@@ -50,7 +50,7 @@ export const runCommandStep: StepHandler = {
       binArgs = process.platform === 'win32' ? ['/d', '/s', '/c', command, ...args] : ['-lc', [command, ...args].join(' ')];
     }
 
-    const result = await spawnCaptured(bin, binArgs, { cwd, env, timeoutMs });
+    const result = await ctx.transport.exec(bin, binArgs, { cwd, env, timeoutMs });
     if (result.code !== expectedExit) {
       throw new Error(`Command exited ${result.code}, expected ${expectedExit}. stderr: ${result.stderr.slice(0, 400)}`);
     }
@@ -61,61 +61,3 @@ export const runCommandStep: StepHandler = {
     };
   },
 };
-
-function spawnCaptured(
-  bin: string,
-  args: string[],
-  opts: { cwd?: string; env: NodeJS.ProcessEnv; timeoutMs: number },
-): Promise<{ code: number | null; stdout: string; stderr: string }> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(bin, args, {
-      cwd: opts.cwd,
-      env: opts.env,
-      windowsHide: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    let stdout = '';
-    let stderr = '';
-    const onChunk = (buf: Buffer, which: 'out' | 'err') => {
-      const s = buf.toString('utf8');
-      if (which === 'out') {
-        stdout = (stdout + s).slice(0, MAX_CAPTURE);
-      } else {
-        stderr = (stderr + s).slice(0, MAX_CAPTURE);
-      }
-    };
-    child.stdout?.on('data', (b) => onChunk(b, 'out'));
-    child.stderr?.on('data', (b) => onChunk(b, 'err'));
-
-    const timer = setTimeout(() => {
-      killTree(child.pid);
-      reject(new Error(`Command timed out after ${opts.timeoutMs}ms`));
-    }, opts.timeoutMs);
-
-    child.on('error', (e) => {
-      clearTimeout(timer);
-      reject(e);
-    });
-    child.on('close', (code) => {
-      clearTimeout(timer);
-      resolve({ code, stdout, stderr });
-    });
-  });
-}
-
-function killTree(pid: number | undefined) {
-  if (!pid) return;
-  try {
-    if (process.platform === 'win32') {
-      spawn('taskkill', ['/pid', String(pid), '/t', '/f'], { stdio: 'ignore', windowsHide: true });
-    } else {
-      process.kill(-pid, 'SIGKILL');
-    }
-  } catch {
-    try {
-      process.kill(pid, 'SIGKILL');
-    } catch {
-      /* already gone */
-    }
-  }
-}

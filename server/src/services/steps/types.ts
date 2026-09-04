@@ -1,4 +1,5 @@
 import type { PipelineStep, PipelineStepResult, PipelineStepType } from '../../types.js';
+import type { Transport } from '../transport/types.js';
 
 export interface StepContext {
   runId: string;
@@ -10,6 +11,8 @@ export interface StepContext {
   /** Outputs keyed by step id from earlier steps. */
   prior: Record<string, Record<string, unknown>>;
   dryRun: boolean;
+  /** Filesystem + exec adapter for this host. Local by default. */
+  transport: Transport;
 }
 
 export interface StepHandler {

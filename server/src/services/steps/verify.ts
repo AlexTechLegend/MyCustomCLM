@@ -1,14 +1,12 @@
 import { createHash } from 'node:crypto';
-import fs from 'node:fs/promises';
-import path from 'node:path';
 import { keyMatchesCert } from '../../openssl.js';
-import type { VerifyAssertionType } from '../../types.js';
 import { readVault } from '../certificates.js';
+import { fingerprintsMatch, verifyTlsEndpoint } from '../tls-verify.js';
 import type { StepHandler } from './types.js';
 import { resolvePathTemplate } from './types.js';
 
 interface Assertion {
-  type: VerifyAssertionType;
+  type: string;
   path?: string;
   expectedHash?: string;
   hashFromStep?: string;
@@ -17,6 +15,12 @@ interface Assertion {
   after?: string;
   backupDir?: string;
   filename?: string;
+  host?: string;
+  port?: number;
+  servername?: string;
+  timeoutMs?: number;
+  expectedFingerprint?: string;
+  expectedChain?: boolean;
 }
 
 export const verifyStep: StepHandler = {
@@ -25,6 +29,7 @@ export const verifyStep: StepHandler = {
     const assertions = (step.config.assertions as Assertion[] | undefined) ?? [];
     if (!assertions.length) throw new Error('verify requires config.assertions');
     const results: { type: string; ok: boolean; detail: string }[] = [];
+    const t = ctx.transport;
 
     for (const a of assertions) {
       if (ctx.dryRun) {
@@ -34,25 +39,21 @@ export const verifyStep: StepHandler = {
       switch (a.type) {
         case 'file-exists': {
           const p = resolvePathTemplate(String(a.path || ''), ctx);
-          try {
-            await fs.access(p);
-            results.push({ type: a.type, ok: true, detail: p });
-          } catch {
-            results.push({ type: a.type, ok: false, detail: `Missing: ${p}` });
-          }
+          const ok = await t.exists(p);
+          results.push({ type: a.type, ok, detail: ok ? p : `Missing: ${p}` });
           break;
         }
         case 'hash-matches': {
           const p = resolvePathTemplate(String(a.path || ''), ctx);
-          const buf = await fs.readFile(p);
+          const buf = await t.readFile(p);
           const actual = createHash('sha256').update(buf).digest('hex');
           let expected = a.expectedHash;
           if (!expected && a.hashFromStep) {
             const files = ctx.prior[a.hashFromStep]?.files as { path: string; sha256?: string }[] | undefined;
-            expected = files?.find((f) => f.path === p || path.basename(f.path) === path.basename(p))?.sha256;
+            expected = files?.find((f) => f.path === p || basename(f.path) === basename(p))?.sha256;
           }
-          const ok = !!expected && expected === actual;
-          results.push({ type: a.type, ok, detail: ok ? `${path.basename(p)} matches` : `Hash mismatch for ${p}` });
+          const ok = !!expected && fingerprintsMatch(expected, actual);
+          results.push({ type: a.type, ok, detail: ok ? `${basename(p)} matches` : `Hash mismatch for ${p}` });
           break;
         }
         case 'key-matches-cert': {
@@ -89,7 +90,7 @@ export const verifyStep: StepHandler = {
           const dir = fromPrior || backupDir;
           const name = String(a.filename || '');
           try {
-            const entries = await fs.readdir(dir);
+            const entries = await t.readdir(dir);
             const ok = !name || entries.includes(name);
             results.push({ type: a.type, ok, detail: ok ? `Backup ${dir} ok` : `${name} not in backup` });
           } catch {
@@ -97,8 +98,32 @@ export const verifyStep: StepHandler = {
           }
           break;
         }
+        case 'verify-endpoint': {
+          const host = resolvePathTemplate(String(a.host || ctx.params.verifyHost || ''), ctx);
+          const port = Number(a.port ?? ctx.params.verifyPort ?? 443);
+          const servername = resolvePathTemplate(String(a.servername || ctx.params.verifyServername || host), ctx);
+          let expected = a.expectedFingerprint ? String(a.expectedFingerprint) : '';
+          if (!expected && ctx.certificateId) {
+            const { getCertificate } = await import('../certificates.js');
+            expected = getCertificate(ctx.certificateId)?.fingerprintSha256 ?? '';
+          }
+          if (!host || !expected) {
+            results.push({ type: a.type, ok: false, detail: 'verify-endpoint needs host and expected fingerprint (or certificateId)' });
+            break;
+          }
+          const outcome = await verifyTlsEndpoint({
+            host,
+            port,
+            servername,
+            timeoutMs: a.timeoutMs,
+            expectedFingerprint: expected,
+            expectChain: Boolean(a.expectedChain),
+          });
+          results.push({ type: a.type, ok: outcome.ok, detail: outcome.detail });
+          break;
+        }
         default:
-          results.push({ type: a.type, ok: false, detail: `Unknown assertion ${(a as Assertion).type}` });
+          results.push({ type: a.type, ok: false, detail: `Unknown assertion ${a.type}` });
       }
     }
 
@@ -110,3 +135,8 @@ export const verifyStep: StepHandler = {
     return { outputs: { assertions: results }, stdout: `All ${results.length} assertion(s) passed` };
   },
 };
+
+function basename(p: string): string {
+  const parts = p.replace(/\\/g, '/').split('/');
+  return parts[parts.length - 1] || p;
+}

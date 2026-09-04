@@ -75,7 +75,16 @@ export function createHost(input: Partial<Host>): Host {
        VALUES (@id, @name, @hostname, @address, @platform, @environment, @owner, @credential_id, @agent_status, @agent_last_seen, @notes, @tags, @created_at, @updated_at)`,
     )
     .run(row);
-  return getHost(row.id)!;
+  const created = getHost(row.id)!;
+  queueMicrotask(() => {
+    void import('./auto-enrol.js')
+      .then((m) => m.autoEnrolOnHostCreate(created))
+      .catch(() => undefined);
+    void import('./digest.js')
+      .then((m) => m.ensureDigestJob())
+      .catch(() => undefined);
+  });
+  return created;
 }
 
 export function updateHost(id: string, input: Partial<Host>): Host | null {

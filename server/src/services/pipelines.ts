@@ -1,13 +1,14 @@
-import fs from 'node:fs/promises';
 import path from 'node:path';
 import { config } from '../config.js';
 import { db, newId, nowIso, parseJson } from '../db.js';
 import type { Pipeline, PipelineRun, PipelineRunState, PipelineStep, PipelineStepResult } from '../types.js';
 import { writeAudit } from './audit.js';
 import { getCertificate } from './certificates.js';
+import { withHostLock } from './host-lock.js';
 import { emitNotification } from './notifications.js';
-import { assertStepImplemented, getStepHandler, UNIMPLEMENTED_STEP_TYPES } from './steps/index.js';
+import { assertStepImplemented, getStepHandler, runPipelinePreflight, UNIMPLEMENTED_STEP_TYPES } from './steps/index.js';
 import type { StepContext } from './steps/types.js';
+import { resolveTransport } from './transport/index.js';
 
 export const STAGING_PRESET_ID = 'pipe_staging_swap';
 
@@ -293,17 +294,22 @@ async function restoreFromBackup(ctx: StepContext): Promise<string | null> {
   const backup = Object.values(ctx.prior).find((o) => typeof o.backupDir === 'string') as { backupDir?: string; files?: string[] } | undefined;
   const dest = String(ctx.params.prodDir || ctx.prior.swap?.destination || '');
   if (!backup?.backupDir || !dest) return null;
+  const t = ctx.transport;
   let names: string[] = [];
   try {
-    names = await fs.readdir(backup.backupDir);
+    names = await t.readdir(backup.backupDir);
   } catch {
     return null;
   }
-  await fs.mkdir(dest, { recursive: true });
+  await t.mkdir(dest);
   for (const name of names) {
-    const from = path.join(backup.backupDir, name);
-    const st = await fs.stat(from);
-    if (st.isFile()) await fs.copyFile(from, path.join(dest, name));
+    const from = t.join(backup.backupDir, name);
+    try {
+      const st = await t.stat(from);
+      if (st.isFile) await t.copy(from, t.join(dest, name));
+    } catch {
+      /* skip unreadable backup entry */
+    }
   }
   return `Restored ${names.length} file(s) from ${backup.backupDir} → ${dest}`;
 }
@@ -399,6 +405,7 @@ export async function executePipeline(input: RunPipelineInput): Promise<Pipeline
   }
 
   const dryRun = Boolean(run.params.dryRun);
+  const resolved = await resolveTransport(run.hostId);
   const ctx: StepContext = {
     runId: run.id,
     certificateId: run.certificateId,
@@ -407,6 +414,7 @@ export async function executePipeline(input: RunPipelineInput): Promise<Pipeline
     params: run.params,
     prior: {},
     dryRun,
+    transport: resolved.transport,
   };
 
   for (const result of run.steps) {
@@ -419,7 +427,29 @@ export async function executePipeline(input: RunPipelineInput): Promise<Pipeline
   let verificationsPassed = !run.steps.some((s) => s.type === 'verify' && s.state === 'failed');
   let resumeArmed = !input.resumeRunId;
 
+  const lockOwner = `pipe:${run.id}`;
+  return withHostLock(run.hostId, lockOwner, async () => {
   try {
+    if (!input.resumeRunId || run.steps.every((s) => s.state === 'pending' || s.state === 'running')) {
+      const preflight = await runPipelinePreflight(ctx);
+      run.params = { ...run.params, __preflight: preflight };
+      persistRun(run);
+      if (!preflight.ok) {
+        const detail = preflight.checks.filter((c) => !c.ok).map((c) => `${c.name}: ${c.detail}`).join('; ');
+        run.state = 'failed';
+        run.finishedAt = nowIso();
+        persistRun(run);
+        emitNotification('pipeline.step_failed', {
+          runId: run.id,
+          stepId: 'preflight',
+          type: 'preflight',
+          error: detail,
+          certificateId: run.certificateId,
+        });
+        return getPipelineRun(run.id)!;
+      }
+    }
+
     for (let i = 0; i < pipeline.steps.length; i += 1) {
       const def = pipeline.steps[i];
       const state = run.steps[i];
@@ -548,6 +578,7 @@ export async function executePipeline(input: RunPipelineInput): Promise<Pipeline
     run.state = hadFailure ? 'failed' : 'succeeded';
     run.finishedAt = nowIso();
     persistRun(run);
+    void import('./digest.js').then((m) => m.ensureDigestJob()).catch(() => undefined);
     return getPipelineRun(run.id)!;
   } catch (error) {
     run.state = 'failed';
@@ -555,6 +586,7 @@ export async function executePipeline(input: RunPipelineInput): Promise<Pipeline
     persistRun(run);
     throw error;
   }
+  });
 }
 
 export async function planPipeline(input: Omit<RunPipelineInput, 'dryRun' | 'resumeRunId'>): Promise<{

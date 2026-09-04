@@ -2,7 +2,10 @@ import type { PipelineStepType } from '../../types.js';
 import { approvalStep } from './approval.js';
 import { backupStep } from './backup.js';
 import { copyStep } from './copy.js';
+import { iisRebindStep } from './iis-rebind.js';
+import { remoteCopyStep } from './remote-copy.js';
 import { renderOutputStep } from './render-output.js';
+import { restartServiceStep } from './restart-service.js';
 import { runCommandStep } from './run-command.js';
 import { swapStep } from './swap.js';
 import type { StepHandler } from './types.js';
@@ -18,6 +21,9 @@ const handlers: StepHandler[] = [
   runCommandStep,
   webhookStep,
   approvalStep,
+  remoteCopyStep,
+  iisRebindStep,
+  restartServiceStep,
 ];
 
 const byType = new Map(handlers.map((h) => [h.type, h]));
@@ -26,18 +32,12 @@ export function getStepHandler(type: PipelineStepType): StepHandler | null {
   return byType.get(type) ?? null;
 }
 
-/**
- * Extension points — not implemented in this task (transport undecided: WinRM/SSH vs agent).
- * remote-copy, iis-rebind, restart-service
- */
-export const UNIMPLEMENTED_STEP_TYPES: PipelineStepType[] = ['remote-copy', 'iis-rebind', 'restart-service'];
+/** Every PipelineStepType now has a handler. Kept as an empty list for callers. */
+export const UNIMPLEMENTED_STEP_TYPES: PipelineStepType[] = [];
 
 export function assertStepImplemented(type: PipelineStepType) {
-  if (UNIMPLEMENTED_STEP_TYPES.includes(type)) {
-    throw new Error(
-      `Step type "${type}" is an extension point and is not implemented yet. ` +
-        `Remote execution needs a transport decision (WinRM/SSH vs installed agent) before it can ship.`,
-    );
-  }
   if (!byType.has(type)) throw new Error(`Unknown step type: ${type}`);
 }
+
+export { runPipelinePreflight } from './preflight.js';
+export type { PreflightCheck, PreflightReport } from './preflight.js';
