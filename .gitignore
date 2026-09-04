@@ -6,3 +6,4 @@ backups/
 .DS_Store
 .env
 *.tsbuildinfo
+web/.vite/

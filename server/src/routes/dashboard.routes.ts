@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import type { AuthedRequest } from '../services/auth.js';
 import { requireRole } from '../services/auth.js';
+import { dashboardTemplateStoreBody, parseBody } from '../lib/schema.js';
 import { getTemplateStore, resolveTemplateId, saveTemplateStore } from '../services/dashboardTemplates.js';
 import { wrap } from './http.js';
 
@@ -19,7 +20,8 @@ dashboardRoutes.put(
   '/dashboard-templates',
   requireRole('admin'),
   wrap((req, res) => {
-    const store = saveTemplateStore(req.body);
+    const body = parseBody(dashboardTemplateStoreBody, req.body);
+    const store = saveTemplateStore(body);
     const user = (req as AuthedRequest).user;
     res.json({ ...store, resolvedId: resolveTemplateId(store, user) });
   }),

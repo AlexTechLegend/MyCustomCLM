@@ -303,3 +303,8 @@ function isRefused(err: unknown): boolean {
 }
 
 void normalizeFingerprint;
+
+export function latestDiscoveryScanId(): string | null {
+  const row = db().prepare('SELECT scan_id FROM discovery_results ORDER BY last_seen DESC LIMIT 1').get() as { scan_id: string } | undefined;
+  return row?.scan_id ?? null;
+}

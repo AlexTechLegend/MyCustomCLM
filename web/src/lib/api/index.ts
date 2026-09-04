@@ -11,3 +11,5 @@ export type { CredentialWrite } from './credentials';
 export { windowsApi } from './windows';
 export { usersApi } from './users';
 export { auditApi } from './audit';
+export { discoveryApi } from './discovery';
+export type { DiscoveryHit } from './discovery';

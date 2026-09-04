@@ -79,8 +79,8 @@ describe('Task 8 spine routes', () => {
     assert.equal(stored.length, 1);
     const res = await fetch(`${base}/api/discovery`);
     assert.equal(res.status, 200);
-    const rows = (await res.json()) as { address: string; fingerprintSha256: string }[];
-    assert.ok(rows.some((r) => r.address === '10.0.0.8' && r.fingerprintSha256 === 'aa'.repeat(32)));
+    const body = (await res.json()) as { scanId: string | null; results: { address: string; fingerprintSha256: string }[] };
+    assert.ok(body.results.some((r) => r.address === '10.0.0.8' && r.fingerprintSha256 === 'aa'.repeat(32)));
   });
 
   it('openapi documents the mounted spine routes and agent wire format', async () => {
