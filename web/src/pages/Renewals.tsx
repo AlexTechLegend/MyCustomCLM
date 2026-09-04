@@ -123,31 +123,31 @@ export function Renewals() {
             <table className="w-full text-left text-[13px]">
               <thead>
                 <tr className="border-b border-ink-100 text-[11px] uppercase tracking-[0.1em] text-ink-500">
-                  <th className="px-6 py-3 font-medium">Certificate</th>
-                  <th className="px-4 py-3 font-medium">Method</th>
-                  <th className="px-4 py-3 font-medium">Key</th>
-                  <th className="px-4 py-3 font-medium tnum">Files</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Created</th>
-                  <th className="px-6 py-3 font-medium text-right"> </th>
+                  <th className="px-6 py-2 font-medium">Certificate</th>
+                  <th className="px-4 py-2 font-medium">Method</th>
+                  <th className="px-4 py-2 font-medium">Key</th>
+                  <th className="px-4 py-2 font-medium tnum">Files</th>
+                  <th className="px-4 py-2 font-medium">Status</th>
+                  <th className="px-4 py-2 font-medium">Created</th>
+                  <th className="px-6 py-2 font-medium text-right"> </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-ink-100">
                 {rows.map((r) => (
                   <tr key={r.id} className="hover:bg-ink-50/60 transition-colors">
-                    <td className="px-6 py-3">
+                    <td className="px-6 py-2.5">
                       <Link to={`/certificates/${r.certificateId}`} className="font-medium text-ink-900 hover:text-brand-700">
                         {r.certificateName}
                       </Link>
                     </td>
-                    <td className="px-4 py-3 text-ink-700">{METHOD_LABEL[r.method]}</td>
-                    <td className="px-4 py-3 text-ink-600">{keyLabel(r.keyMode)}</td>
-                    <td className="px-4 py-3 text-ink-700 tnum">{r.outputs.length}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-2.5 text-ink-700">{METHOD_LABEL[r.method]}</td>
+                    <td className="px-4 py-2.5 text-ink-600">{keyLabel(r.keyMode)}</td>
+                    <td className="px-4 py-2.5 text-ink-700 tnum">{r.outputs.length}</td>
+                    <td className="px-4 py-2.5">
                       <Badge tone={statusTone(r.status)}>{statusLabel(r.status)}</Badge>
                     </td>
-                    <td className="px-4 py-3 text-ink-500 tnum whitespace-nowrap">{formatDateTime(r.createdAt)}</td>
-                    <td className="px-6 py-3 text-right">
+                    <td className="px-4 py-2.5 text-ink-500 tnum whitespace-nowrap">{formatDateTime(r.createdAt)}</td>
+                    <td className="px-6 py-2.5 text-right">
                       <LinkButton to={`/certificates/${r.certificateId}/renew?renewal=${r.id}`} size="sm" variant="ghost">
                         Open receipt
                       </LinkButton>
