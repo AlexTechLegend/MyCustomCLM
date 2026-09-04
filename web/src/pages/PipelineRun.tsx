@@ -78,6 +78,8 @@ export function PipelineRunPage() {
         {r.hostId && <Link to="/hosts" className="text-brand-600 hover:underline">Host</Link>}
         <span>Started {r.startedAt ? formatDateTime(r.startedAt) : '—'}</span>
         <span>Finished {r.finishedAt ? formatDateTime(r.finishedAt) : '—'}</span>
+        {r.decisionNote && <span>Decision note: {r.decisionNote}</span>}
+        {r.approvedBy && <span>By {r.approvedBy}{r.approvedAt ? ` · ${formatDateTime(r.approvedAt)}` : ''}</span>}
         <Field label="" className="ml-auto w-64">
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search stdout…" />
         </Field>

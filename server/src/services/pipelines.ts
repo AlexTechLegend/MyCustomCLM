@@ -166,6 +166,8 @@ interface RunRow {
 
 function mapRun(r: RunRow): PipelineRun {
   const pipeline = getPipeline(r.pipeline_id);
+  const params = parseJson<Record<string, unknown>>(r.params, {});
+  const note = params.decisionNote;
   return {
     id: r.id,
     pipelineId: r.pipeline_id,
@@ -175,9 +177,10 @@ function mapRun(r: RunRow): PipelineRun {
     hostId: r.host_id,
     state: r.state,
     steps: parseJson(r.steps, []),
-    params: parseJson(r.params, {}),
+    params,
     approvedBy: r.approved_by,
     approvedAt: r.approved_at,
+    decisionNote: typeof note === 'string' && note.trim() ? note.trim() : null,
     startedAt: r.started_at,
     finishedAt: r.finished_at,
     createdAt: r.created_at,
@@ -377,6 +380,7 @@ export async function executePipeline(input: RunPipelineInput): Promise<Pipeline
       params: { ...defaultParams, ...input.params, dryRun: Boolean(input.dryRun) },
       approvedBy: null,
       approvedAt: null,
+      decisionNote: null,
       startedAt: now,
       finishedAt: null,
       createdAt: now,
@@ -600,11 +604,16 @@ export async function planPipeline(input: Omit<RunPipelineInput, 'dryRun' | 'res
 
 export async function approvePipelineRun(
   runId: string,
-  actor: { userId?: string | null; reject?: boolean },
+  actor: { userId?: string | null; reject?: boolean; note?: string },
 ): Promise<PipelineRun> {
   const run = getPipelineRun(runId);
   if (!run) throw new Error('Pipeline run not found');
   if (run.state !== 'awaiting-approval') throw new Error('Run is not awaiting approval.');
+  const note = actor.note?.trim() || '';
+  if (note) {
+    run.params = { ...run.params, decisionNote: note };
+    run.decisionNote = note;
+  }
   if (actor.reject) {
     run.state = 'rejected';
     run.finishedAt = nowIso();
@@ -613,7 +622,7 @@ export async function approvePipelineRun(
     const waiting = run.steps.find((s) => s.state === 'awaiting-approval');
     if (waiting) {
       waiting.state = 'failed';
-      waiting.error = 'Rejected';
+      waiting.error = note ? `Rejected: ${note}` : 'Rejected';
       waiting.finishedAt = run.approvedAt;
     }
     persistRun(run);
@@ -623,6 +632,7 @@ export async function approvePipelineRun(
       action: 'pipeline.reject',
       entityType: 'pipeline_run',
       entityId: runId,
+      after: note ? { note } : null,
     });
     return getPipelineRun(runId)!;
   }
@@ -635,6 +645,7 @@ export async function approvePipelineRun(
     action: 'pipeline.approve',
     entityType: 'pipeline_run',
     entityId: runId,
+    after: note ? { note } : null,
   });
   return executePipeline({
     pipelineId: run.pipelineId,

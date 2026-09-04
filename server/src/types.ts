@@ -360,6 +360,8 @@ export interface PipelineRun {
   params: Record<string, unknown>;
   approvedBy: string | null;
   approvedAt: string | null;
+  /** Optional note from the approver / rejector. Stored in params.decisionNote. */
+  decisionNote: string | null;
   startedAt: string | null;
   finishedAt: string | null;
   createdAt: string;
