@@ -43,7 +43,21 @@ export function restoreVigil(srcDir: string) {
   const wal = path.join(src, 'vigil.sqlite-wal');
   const shm = path.join(src, 'vigil.sqlite-shm');
   if (fs.existsSync(wal)) fs.copyFileSync(wal, `${config.dbPath}-wal`);
+  else {
+    try {
+      fs.rmSync(`${config.dbPath}-wal`, { force: true });
+    } catch {
+      /* ignore */
+    }
+  }
   if (fs.existsSync(shm)) fs.copyFileSync(shm, `${config.dbPath}-shm`);
+  else {
+    try {
+      fs.rmSync(`${config.dbPath}-shm`, { force: true });
+    } catch {
+      /* ignore */
+    }
+  }
   if (fs.existsSync(path.join(src, 'vault'))) {
     fs.rmSync(config.vaultDir, { recursive: true, force: true });
     copyDir(path.join(src, 'vault'), config.vaultDir);

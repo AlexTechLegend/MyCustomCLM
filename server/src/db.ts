@@ -19,6 +19,7 @@ const require = createRequire(import.meta.url);
 
 let _db: Db | null = null;
 let _backend: string | null = null;
+let _close: (() => void) | null = null;
 
 export function dbBackend() {
   return _backend;
@@ -30,11 +31,12 @@ export function db(): Db {
   const opened = openDatabase(config.dbPath);
   _db = opened.db;
   _backend = opened.backend;
+  _close = opened.close;
   migrate(_db);
   return _db;
 }
 
-function openDatabase(dbPath: string): { db: Db; backend: string } {
+function openDatabase(dbPath: string): { db: Db; backend: string; close: () => void } {
   // Prefer better-sqlite3: works on Node 20+ with prebuilt binaries (incl. Windows).
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -46,11 +48,12 @@ function openDatabase(dbPath: string): { db: Db; backend: string } {
         all(...p: unknown[]): unknown[];
       };
       pragma(p: string): unknown;
+      close(): void;
     };
     const raw = new Database(dbPath);
     raw.pragma('journal_mode = WAL');
     raw.pragma('foreign_keys = ON');
-    return { db: wrapBetter(raw), backend: 'better-sqlite3' };
+    return { db: wrapBetter(raw), backend: 'better-sqlite3', close: () => raw.close() };
   } catch (betterErr) {
     // Fall back to Node's built-in sqlite (Node 22.5+).
     try {
@@ -67,10 +70,10 @@ function openDatabase(dbPath: string): { db: Db; backend: string } {
           };
         };
       };
-      const raw = new DatabaseSync(dbPath);
+      const raw = new DatabaseSync(dbPath) as { exec(sql: string): void; prepare(sql: string): { run(...p: unknown[]): { changes: number | bigint; lastInsertRowid: number | bigint }; get(...p: unknown[]): unknown; all(...p: unknown[]): unknown[] }; close?: () => void };
       raw.exec('PRAGMA journal_mode = WAL');
       raw.exec('PRAGMA foreign_keys = ON');
-      return { db: wrapNamed(raw), backend: 'node:sqlite' };
+      return { db: wrapNamed(raw), backend: 'node:sqlite', close: () => raw.close?.() };
     } catch (sqliteErr) {
       const betterMsg = betterErr instanceof Error ? betterErr.message : String(betterErr);
       const sqliteMsg = sqliteErr instanceof Error ? sqliteErr.message : String(sqliteErr);
@@ -505,8 +508,14 @@ export function ensureDataDirWritable() {
   fs.accessSync(config.dataDir, fs.constants.W_OK);
 }
 
-/** Drop the process-wide handle so the next db() opens config.dbPath again. */
+/** Close and drop the process-wide handle so the next db() opens config.dbPath again. */
 export function resetDbHandle() {
+  try {
+    _close?.();
+  } catch {
+    /* already closed */
+  }
+  _close = null;
   _db = null;
   _backend = null;
 }

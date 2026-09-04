@@ -38,6 +38,7 @@ describe('backup / restore', () => {
 
     restoreVigil(snapshot);
     resetDbHandle();
+    process.env.VIGIL_DATA_DIR = dir;
     const row = db().prepare('SELECT value FROM settings WHERE key = ?').get('backup.test') as { value: string } | undefined;
     assert.equal(row?.value, marker);
     assert.equal(fs.readFileSync(path.join(config.vaultDir, 'probe.txt'), 'utf8'), 'vault-bytes');
