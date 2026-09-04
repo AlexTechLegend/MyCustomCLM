@@ -49,11 +49,16 @@ npm run build
 npm start
 ```
 
-Environment variables: `PORT` (default 4180), `VIGIL_DATA_DIR` (default `./data`),
-`OPENSSL_BIN` (auto-detected; set to override).
+Environment variables (common): `PORT` (default 4180), `VIGIL_DATA_DIR` (default `./data`),
+`OPENSSL_BIN` (auto-detected; set to override), `VIGIL_AUTH=1` (authenticate every route
+except health / login / OpenAPI), `VIGIL_SECRET_KEY` (AES-256-GCM for stored credentials).
+
+First start with no users and no key generates `data/secret.key` (mode 0600) and an
+`admin` account. The one-time password is printed once in the server log — change it
+after login. You can also run `npm run bootstrap -w server`.
 
 > `npm run seed` resets the data directory. Run it before starting the server, or restart
-> the server afterwards.
+> the server afterwards. Seed also prints one-time passwords for `admin` and `operator`.
 
 ### Installing OpenSSL
 
@@ -123,5 +128,117 @@ data/                 (git-ignored) SQLite, vault, rendered renewals, internal C
 - OpenSSL is spawned with argument arrays (no shell) and detached from any TTY so it can
   never block on a prompt; passwords go through temporary `0600` files, not the command line.
 - Filenames rendered from patterns are sanitised; destination paths must be absolute.
-- There is no authentication in v1 — run Vigil on a trusted network or behind an
-  authenticating reverse proxy. See the roadmap in `docs/PLAN.md`.
+- Set **`VIGIL_AUTH=1`** in any install that is not a single-user LAN. The API is
+  authenticated-by-default: only `GET /api/health`, `GET /api/openapi.json`,
+  `GET /api/auth/me`, `POST /api/auth/login` and `POST /api/auth/logout` are public.
+  Roles: **viewer** reads; **operator** renews, deploys and runs pipelines; **approver**
+  releases gates; **admin** owns users, credentials, blueprints and settings.
+- Leaving `VIGIL_AUTH` unset is still allowed for a local demo, but the process logs a
+  loud warning at startup naming the risk.
+- Credential secrets are encrypted with `VIGIL_SECRET_KEY`. The server **refuses to start**
+  if credentials exist and the key is missing — it never falls back to plaintext. The
+  API never returns the secret, only metadata (`hasSecret`).
+- OpenAPI document: `GET /api/openapi.json`. `/api/health` is a cheap `{ ok: true }`
+  probe (no database).
+
+### Key rotation
+
+```bash
+# Current key in VIGIL_SECRET_KEY_OLD, new key in VIGIL_SECRET_KEY.
+VIGIL_SECRET_KEY_OLD='old-key-or-passphrase' \
+VIGIL_SECRET_KEY='new-64-hex-or-passphrase' \
+  npm run rotate-key -w server
+```
+
+Re-encryption runs in one SQLite transaction. Persist the new key in the service
+environment (and in `data/secret.key`) before restarting.
+
+### Backup and restore drill
+
+These commands write a consistent snapshot of the SQLite database (`VACUUM INTO`,
+falling back to a file copy), the vault, and the CA directory. **Stop the service
+before restore.** Do not run this against a live shared `data/` directory that
+another process has open.
+
+```bash
+# 1. Snapshot (safe to run while the server is up)
+npm run backup -w server -- ./backups
+# prints something like: /…/backups/vigil-backup-2026-09-04T02-30-00-000Z
+
+# 2. Confirm the snapshot
+ls backups/vigil-backup-*/vigil.sqlite
+ls backups/vigil-backup-*/vault
+ls backups/vigil-backup-*/ca
+cat backups/vigil-backup-*/manifest.json
+
+# 3. Restore into a disposable directory (proves the files are usable)
+VIGIL_DATA_DIR=/tmp/vigil-restore-drill npm run restore -w server -- ./backups/vigil-backup-<stamp>
+ls /tmp/vigil-restore-drill/vigil.sqlite
+ls /tmp/vigil-restore-drill/vault
+
+# 4. Production restore: stop Vigil, then
+#    VIGIL_DATA_DIR=/var/lib/vigil npm run restore -w server -- /path/to/vigil-backup-<stamp>
+#    and start the service again. Keep VIGIL_SECRET_KEY the same as when the
+#    backup was taken, or credentials will not decrypt.
+```
+
+A unit test (`server/src/lib/backup.test.ts`) also round-trips a settings row and a
+vault file through backup → delete → restore.
+
+## Running as a service
+
+A scheduler that renews production certificates must survive a reboot. After
+`npm run build`, install one of the wrappers in `deploy/`.
+
+### Service account
+
+Use a **dedicated** account — never Domain Admin, never your own interactive login.
+
+| Platform | Account | Required rights |
+|----------|---------|-----------------|
+| Linux | system user `vigil` | Own `/var/lib/vigil` (`0700`). Read `/opt/vigil`. Execute `node` and OpenSSL. No sudo. The unit sets `ProtectSystem=strict` and `ReadWritePaths=/var/lib/vigil`. |
+| Windows | local user or gMSA | **Log on as a service**. **Modify** on `VIGIL_DATA_DIR`. **Read & execute** on the OpenSSL binary (and Git's `usr\bin` if you use that copy). Outbound network later, if you enable WinRM/SSH transports. |
+
+Keep `VIGIL_SECRET_KEY` in the service environment (or `data/secret.key` mode 0600),
+not in the database and not in a world-readable script.
+
+### systemd
+
+```bash
+sudo useradd --system --home /var/lib/vigil --shell /usr/sbin/nologin vigil
+sudo mkdir -p /opt/vigil /var/lib/vigil /etc/vigil
+sudo cp -a . /opt/vigil
+sudo cp deploy/vigil.env.example /etc/vigil/vigil.env   # then edit; chmod 0600
+sudo cp deploy/vigil.service /etc/systemd/system/vigil.service
+sudo chown -R vigil:vigil /var/lib/vigil /opt/vigil
+sudo systemctl daemon-reload
+sudo systemctl enable --now vigil
+curl -sS http://127.0.0.1:4180/api/health
+```
+
+### Windows
+
+From an elevated PowerShell, after `npm run build`:
+
+```powershell
+.\deploy\windows\Install-VigilService.ps1
+```
+
+The script uses **NSSM** when `nssm` is on `PATH` (`winget install NSSM.NSSM`), or
+**WinSW** if you drop the x64 exe at `deploy\windows\vigil-service.exe`. The WinSW
+config is `deploy\windows\vigil-winsw.xml`. Uninstall with
+`.\deploy\windows\Uninstall-VigilService.ps1`.
+
+### Docker
+
+```bash
+docker build -t vigil-clm .
+docker run --name vigil -p 4180:4180 \
+  -e VIGIL_SECRET_KEY=your-64-hex-or-passphrase \
+  -v vigil-data:/data \
+  vigil-clm
+```
+
+The image sets `VIGIL_AUTH=1` and `VIGIL_DATA_DIR=/data`. First start without a key
+writes `/data/secret.key` and logs the admin one-time password. `GET /api/health`
+is the liveness probe.

@@ -19,6 +19,7 @@ const require = createRequire(import.meta.url);
 
 let _db: Db | null = null;
 let _backend: string | null = null;
+let _close: (() => void) | null = null;
 
 export function dbBackend() {
   return _backend;
@@ -30,11 +31,12 @@ export function db(): Db {
   const opened = openDatabase(config.dbPath);
   _db = opened.db;
   _backend = opened.backend;
+  _close = opened.close;
   migrate(_db);
   return _db;
 }
 
-function openDatabase(dbPath: string): { db: Db; backend: string } {
+function openDatabase(dbPath: string): { db: Db; backend: string; close: () => void } {
   // Prefer better-sqlite3: works on Node 20+ with prebuilt binaries (incl. Windows).
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -46,11 +48,12 @@ function openDatabase(dbPath: string): { db: Db; backend: string } {
         all(...p: unknown[]): unknown[];
       };
       pragma(p: string): unknown;
+      close(): void;
     };
     const raw = new Database(dbPath);
     raw.pragma('journal_mode = WAL');
     raw.pragma('foreign_keys = ON');
-    return { db: wrapBetter(raw), backend: 'better-sqlite3' };
+    return { db: wrapBetter(raw), backend: 'better-sqlite3', close: () => raw.close() };
   } catch (betterErr) {
     // Fall back to Node's built-in sqlite (Node 22.5+).
     try {
@@ -67,10 +70,10 @@ function openDatabase(dbPath: string): { db: Db; backend: string } {
           };
         };
       };
-      const raw = new DatabaseSync(dbPath);
+      const raw = new DatabaseSync(dbPath) as { exec(sql: string): void; prepare(sql: string): { run(...p: unknown[]): { changes: number | bigint; lastInsertRowid: number | bigint }; get(...p: unknown[]): unknown; all(...p: unknown[]): unknown[] }; close?: () => void };
       raw.exec('PRAGMA journal_mode = WAL');
       raw.exec('PRAGMA foreign_keys = ON');
-      return { db: wrapNamed(raw), backend: 'node:sqlite' };
+      return { db: wrapNamed(raw), backend: 'node:sqlite', close: () => raw.close?.() };
     } catch (sqliteErr) {
       const betterMsg = betterErr instanceof Error ? betterErr.message : String(betterErr);
       const sqliteMsg = sqliteErr instanceof Error ? sqliteErr.message : String(sqliteErr);
@@ -435,6 +438,36 @@ function migrate(d: Db) {
       owner TEXT NOT NULL,
       expires_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS instance_leases (
+      id TEXT PRIMARY KEY CHECK (id = 'scheduler'),
+      owner TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS discovery_results (
+      id TEXT PRIMARY KEY,
+      scan_id TEXT NOT NULL,
+      address TEXT NOT NULL,
+      port INTEGER NOT NULL,
+      hostname TEXT NOT NULL DEFAULT '',
+      subject TEXT NOT NULL DEFAULT '',
+      issuer TEXT NOT NULL DEFAULT '',
+      not_after TEXT,
+      fingerprint_sha256 TEXT NOT NULL DEFAULT '',
+      matched_certificate_id TEXT,
+      first_seen TEXT NOT NULL,
+      last_seen TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_discovery_scan ON discovery_results(scan_id);
+    CREATE INDEX IF NOT EXISTS idx_discovery_fp ON discovery_results(fingerprint_sha256);
+
+    CREATE TABLE IF NOT EXISTS dashboard_template_store (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      payload TEXT NOT NULL DEFAULT '{}',
+      updated_at TEXT NOT NULL
+    );
   `);
   // Additive migrations for databases created before these columns existed.
   ensureColumn(d, 'certificates', 'destination_override', "TEXT NOT NULL DEFAULT ''");
@@ -445,6 +478,9 @@ function migrate(d: Db) {
   ensureColumn(d, 'profiles', 'scope', "TEXT NOT NULL DEFAULT 'general'");
   ensureColumn(d, 'profiles', 'server_tags', "TEXT NOT NULL DEFAULT '[]'");
   ensureColumn(d, 'profiles', 'certificate_ids', "TEXT NOT NULL DEFAULT '[]'");
+  ensureColumn(d, 'hosts', 'transport', "TEXT NOT NULL DEFAULT 'none'");
+  ensureColumn(d, 'hosts', 'transport_config', "TEXT NOT NULL DEFAULT '{}'");
+  ensureColumn(d, 'hosts', 'agent_token_credential_id', 'TEXT');
 }
 
 function ensureColumn(d: Db, table: string, column: string, ddl: string) {
@@ -476,4 +512,16 @@ export function parseJson<T>(value: unknown, fallback: T): T {
 export function ensureDataDirWritable() {
   ensureDirs();
   fs.accessSync(config.dataDir, fs.constants.W_OK);
+}
+
+/** Close and drop the process-wide handle so the next db() opens config.dbPath again. */
+export function resetDbHandle() {
+  try {
+    _close?.();
+  } catch {
+    /* already closed */
+  }
+  _close = null;
+  _db = null;
+  _backend = null;
 }

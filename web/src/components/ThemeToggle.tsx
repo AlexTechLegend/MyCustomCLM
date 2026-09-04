@@ -1,12 +1,11 @@
 import clsx from 'clsx';
-import { Monitor, Moon, Sun } from 'lucide-react';
+import { Moon, Sun } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { applyTheme, cycleTheme, persistTheme, readTheme, type Theme } from '@/lib/theme';
 
 const META: Record<Theme, { label: string; icon: typeof Sun }> = {
   light: { label: 'Light', icon: Sun },
   dark: { label: 'Dark', icon: Moon },
-  system: { label: 'System', icon: Monitor },
 };
 
 export function ThemeToggle({ className }: { className?: string }) {
@@ -39,7 +38,7 @@ export function ThemeToggle({ className }: { className?: string }) {
         'text-white/60 hover:text-white hover:bg-white/8',
         className,
       )}
-      aria-label={`Theme: ${label}. Click to change.`}
+      aria-label={`Theme: ${label}. Click to switch to ${cycleTheme(theme)}.`}
       title={`Theme: ${label}`}
     >
       <Icon className="size-[18px]" />

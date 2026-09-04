@@ -9,6 +9,7 @@ import type { Certificate, Profile } from '@/types';
 
 const GO_TO: { label: string; to: string; keywords?: string }[] = [
   { label: 'Dashboard', to: '/' },
+  { label: 'Dashboard builder', to: '/dashboard/builder', keywords: 'edit layout template' },
   { label: 'Certificates', to: '/certificates' },
   { label: 'Renewals', to: '/renewals' },
   { label: 'Expiry calendar', to: '/calendar', keywords: 'schedule expiry' },
@@ -17,6 +18,14 @@ const GO_TO: { label: string; to: string; keywords?: string }[] = [
   { label: 'Tags & groups', to: '/tags' },
   { label: 'Activity', to: '/activity' },
   { label: 'Settings', to: '/settings' },
+  { label: 'Hosts', to: '/hosts', keywords: 'server machine' },
+  { label: 'Blueprints', to: '/blueprints', keywords: 'template onboard' },
+  { label: 'Pipelines', to: '/pipelines', keywords: 'deploy steps' },
+  { label: 'Jobs', to: '/jobs', keywords: 'scheduler queue' },
+  { label: 'Approvals', to: '/approvals', keywords: 'inbox gate' },
+  { label: 'Credentials', to: '/credentials', keywords: 'secret password' },
+  { label: 'Maintenance windows', to: '/windows', keywords: 'schedule blackout' },
+  { label: 'Onboard a server', to: '/onboard', keywords: 'instantiate blueprint' },
   { label: 'Import certificate', to: '/certificates/import', keywords: 'upload pfx' },
   { label: 'New profile', to: '/profiles/new', keywords: 'create output' },
 ];

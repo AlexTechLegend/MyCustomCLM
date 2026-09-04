@@ -2,15 +2,22 @@ import { useQuery } from '@tanstack/react-query';
 import clsx from 'clsx';
 import {
   Activity,
+  Boxes,
+  CalendarClock,
   CalendarDays,
   Fingerprint,
   FolderCog,
+  GitBranch,
+  Inbox,
+  KeyRound,
   LayoutDashboard,
+  ListTodo,
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
   RefreshCw,
+  Server,
   Settings,
   ShieldCheck,
   Tags,
@@ -24,7 +31,7 @@ import { HealthStrip } from './HealthStrip';
 import { Logo, Mark } from './Logo';
 import { ShortcutMap } from './ShortcutMap';
 import { ThemeToggle } from './ThemeToggle';
-import { api } from '@/lib/api';
+import { api, pipelinesApi } from '@/lib/api';
 import { hours } from '@/lib/format';
 
 const NAV = [
@@ -39,6 +46,16 @@ const NAV = [
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
+const AUTOMATION = [
+  { to: '/hosts', label: 'Hosts', icon: Server },
+  { to: '/blueprints', label: 'Blueprints', icon: Boxes },
+  { to: '/pipelines', label: 'Pipelines', icon: GitBranch },
+  { to: '/jobs', label: 'Jobs', icon: ListTodo },
+  { to: '/approvals', label: 'Approvals', icon: Inbox },
+  { to: '/credentials', label: 'Credentials', icon: KeyRound },
+  { to: '/windows', label: 'Windows', icon: CalendarClock },
+];
+
 const G_JUMP: Record<string, string> = {
   d: '/',
   c: '/certificates',
@@ -47,6 +64,10 @@ const G_JUMP: Record<string, string> = {
   a: '/activity',
   s: '/settings',
   k: '/calendar',
+  h: '/hosts',
+  b: '/blueprints',
+  l: '/pipelines',
+  j: '/jobs',
 };
 
 const SIDEBAR_EXPANDED = 256;
@@ -90,6 +111,12 @@ function isTyping(target: EventTarget | null) {
 
 export function Layout() {
   const { data } = useQuery({ queryKey: ['dashboard'], queryFn: api.dashboard, staleTime: 30_000 });
+  const waiting = useQuery({
+    queryKey: ['pipeline-runs', 'awaiting'],
+    queryFn: () => pipelinesApi.runs(),
+    staleTime: 15_000,
+    select: (runs) => runs.filter((r) => r.state === 'awaiting-approval').length,
+  });
   const location = useLocation();
   const nav = useNavigate();
   const lgUp = useIsLgUp();
@@ -208,6 +235,34 @@ export function Layout() {
               </NavLink>
             );
           })}
+          {!rail && (
+            <div className="pt-4 pb-1 px-3 text-[11px] font-medium uppercase tracking-[0.14em] text-white/40">Automation</div>
+          )}
+          {rail && <div className="my-2 mx-2 border-t border-white/10" />}
+          {AUTOMATION.map((n) => {
+            const active = location.pathname === n.to || location.pathname.startsWith(`${n.to}/`);
+            const badge = n.to === '/approvals' ? waiting.data ?? 0 : 0;
+            return (
+              <NavLink
+                key={n.to}
+                to={n.to}
+                title={rail ? n.label : undefined}
+                className={clsx(
+                  'relative flex items-center rounded-xl text-sm font-medium transition-all duration-150',
+                  rail ? 'justify-center h-10 w-full' : 'gap-3 px-3 h-10',
+                  active
+                    ? 'bg-white/14 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.14)] ring-1 ring-white/10'
+                    : 'text-white/60 hover:text-white hover:bg-white/8',
+                )}
+              >
+                <n.icon className="size-[18px] shrink-0" />
+                {!rail && <span className="flex-1 truncate">{n.label}</span>}
+                {!rail && badge > 0 && (
+                  <span className="rounded-md bg-warn-500/25 text-warn-100 px-1.5 text-[11px] font-semibold tnum">{badge}</span>
+                )}
+              </NavLink>
+            );
+          })}
         </nav>
 
         <div className={clsx('relative', rail ? 'p-2' : 'p-3')}>
@@ -262,8 +317,8 @@ export function Layout() {
             <Logo />
           </div>
         )}
-        <HealthStrip onOpenDiagnostics={() => setDiagnostics(true)} />
-        <div className="max-w-[1280px] mx-auto px-8 py-9">
+        {!location.pathname.startsWith('/dashboard/builder') && <HealthStrip onOpenDiagnostics={() => setDiagnostics(true)} />}
+        <div className={location.pathname.startsWith('/dashboard/builder') ? 'px-6 py-6' : 'max-w-[1280px] mx-auto px-8 py-9'}>
           <Outlet />
         </div>
       </main>

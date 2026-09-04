@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import { config } from '../config.js';
 import { db, newId, nowIso, parseJson } from '../db.js';
+import { log, newCorrelationId, runWithContext } from '../lib/logger.js';
 import type { User, UserRole } from '../types.js';
 import { writeAudit } from './audit.js';
 import { hashPassword, hashToken, randomToken, verifyPassword } from './crypto.js';
@@ -185,21 +186,48 @@ export function clearSessionCookie(res: Response) {
 }
 
 /**
- * Auth middleware. Disabled unless VIGIL_AUTH=1 so in-flight UI work keeps running.
- * When enabled, mutating routes require a valid session cookie.
+ * Routes that stay reachable with no session when VIGIL_AUTH=1.
+ * Everything else requires a valid user.
+ */
+export function isPublicRoute(method: string, path: string): boolean {
+  const m = method.toUpperCase();
+  if (m === 'GET' && (path === '/health' || path === '/openapi.json' || path === '/auth/me')) return true;
+  if (m === 'POST' && (path === '/auth/login' || path === '/auth/logout')) return true;
+  if (m === 'OPTIONS' || m === 'HEAD') return true;
+  return false;
+}
+
+export function requestContext(req: Request, res: Response, next: NextFunction) {
+  const requestId = (typeof req.headers['x-request-id'] === 'string' && req.headers['x-request-id']) || newCorrelationId('req');
+  res.setHeader('x-request-id', requestId);
+  runWithContext({ requestId }, () => next());
+}
+
+/**
+ * Authenticated-by-default when VIGIL_AUTH=1. Public routes are the allow-list.
+ * When auth is off, every request proceeds — index.ts logs a loud warning.
  */
 export function authMiddleware(req: AuthedRequest, res: Response, next: NextFunction) {
-  if (!config.authEnabled) return next();
   const token = parseCookie(req.headers.cookie, COOKIE);
   if (token) {
     const user = userFromToken(token);
     if (user) req.user = user;
   }
-  // Login / logout must work without an existing session.
-  const open = req.path === '/auth/login' || req.path === '/auth/logout';
-  const mutating = !['GET', 'HEAD', 'OPTIONS'].includes(req.method);
-  if (mutating && !req.user && !open) {
+  if (!config.authEnabled) return next();
+  if (isPublicRoute(req.method, req.path)) return next();
+  if (!req.user) {
     return res.status(401).json({ error: 'Authentication required (VIGIL_AUTH=1). POST /api/auth/login first.' });
+  }
+  next();
+}
+
+/** Viewers may only read. Mutating verbs need operator / approver / admin. */
+export function viewerReadOnly(req: AuthedRequest, res: Response, next: NextFunction) {
+  if (!config.authEnabled) return next();
+  if (!req.user) return next();
+  if (isPublicRoute(req.method, req.path)) return next();
+  if (req.user.role === 'viewer' && !['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+    return res.status(403).json({ error: 'Viewers have read-only access.' });
   }
   next();
 }
@@ -209,8 +237,13 @@ export function requireRole(...roles: UserRole[]) {
     if (!config.authEnabled) return next();
     if (!req.user) return res.status(401).json({ error: 'Authentication required.' });
     if (!roles.includes(req.user.role) && req.user.role !== 'admin') {
+      log.warn('role denied', { role: req.user.role, need: roles, path: req.path });
       return res.status(403).json({ error: `Requires role: ${roles.join(' | ')}` });
     }
     next();
   };
+}
+
+export function parseSessionCookie(header: string | undefined): string | null {
+  return parseCookie(header, COOKIE);
 }

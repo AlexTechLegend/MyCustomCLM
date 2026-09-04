@@ -153,7 +153,7 @@ export function Settings() {
             <ul className="text-[13px] text-ink-600 space-y-1.5 list-disc pl-4">
               <li>Private keys are stored in the vault with mode 0600 and never leave the server except through the downloads you trigger.</li>
               <li>OpenSSL is invoked with argument arrays — no shell — and passwords are passed through temporary files, not the command line.</li>
-              <li>Vigil currently has no user accounts. Run it behind your VPN or a reverse proxy with authentication.</li>
+              <li>Turn on <code className="font-mono">VIGIL_AUTH=1</code> to enforce local accounts. Dashboard templates can be assigned to each role or person from Edit layout.</li>
             </ul>
           </Card>
         </div>
