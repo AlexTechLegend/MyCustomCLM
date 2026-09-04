@@ -68,6 +68,11 @@ export function roundRows(n: number): number {
   return Math.max(MIN_ROWS, Math.ceil(n / ROW_STEP) * ROW_STEP);
 }
 
+/** Keep any integer row count at or above the 12-row floor. */
+export function clampRows(n: number): number {
+  return Math.max(MIN_ROWS, Math.round(Number(n)) || MIN_ROWS);
+}
+
 export function sortReading<T extends CellRect>(items: T[]): T[] {
   return [...items].sort((a, b) => a.y - b.y || a.x - b.x);
 }
@@ -88,15 +93,15 @@ export function firstFreeSlot(items: GridPos[], w: number, h: number, cols: numb
   return null;
 }
 
-/** Like firstFreeSlot, but grows the canvas in 12-row steps until the tile fits. */
+/** Like firstFreeSlot, but grows the canvas one row at a time until the tile fits. */
 export function slotOrGrow(items: GridPos[], w: number, h: number, cols: number, rows: number): { x: number; y: number; rows: number } {
-  let r = rows;
-  for (let guard = 0; guard < 64; guard++) {
+  let r = Math.max(rows, MIN_ROWS);
+  for (let guard = 0; guard < 256; guard++) {
     const slot = firstFreeSlot(items, w, h, cols, r);
     if (slot) return { ...slot, rows: r };
-    r += ROW_STEP;
+    r += 1;
   }
-  return { x: 0, y: r, rows: roundRows(r + h) };
+  return { x: 0, y: r, rows: clampRows(r + h) };
 }
 
 /**
@@ -149,5 +154,5 @@ export function scaleLayout(layout: DashboardLayout, toCols: GridCols, minWOf: (
     placed.push(cand);
   }
   if (relocated) console.info(`[dashboard] ${relocated} tile${relocated === 1 ? '' : 's'} moved to avoid overlap after switching to ${toCols} columns`);
-  return { ...layout, cols: toCols, rows: roundRows(rows), items: placed };
+  return { ...layout, cols: toCols, rows: clampRows(rows), items: placed };
 }

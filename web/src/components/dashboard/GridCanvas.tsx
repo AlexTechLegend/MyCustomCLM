@@ -1,4 +1,5 @@
 import clsx from 'clsx';
+import { createPortal } from 'react-dom';
 import type { KeyboardEvent, PointerEvent as ReactPointerEvent, Ref } from 'react';
 import { TILE_BY_ID } from '@/components/tiles/registry';
 import type { TileContext } from '@/components/tiles/types';
@@ -72,7 +73,12 @@ export function GridCanvas({
   return (
     <div
       ref={canvasRef}
-      className={clsx('relative w-full', editing && 'rounded-2xl', interaction.kind !== 'idle' && 'select-none cursor-grabbing')}
+      className={clsx(
+        'relative w-full',
+        editing && 'rounded-2xl',
+        interaction.kind !== 'idle' && 'select-none cursor-grabbing',
+        interaction.kind === 'idle' && 'motion-safe:transition-[height] motion-safe:duration-200 motion-safe:ease-out',
+      )}
       style={{ height: canvasHeight(rows) }}
     >
       {editing && ready && (
@@ -92,13 +98,12 @@ export function GridCanvas({
           if (!def) return null;
           const moving = interaction.kind === 'move' && interaction.id === item.id;
           const resizing = interaction.kind === 'resize' && interaction.id === item.id;
-          const pos = resizing ? interaction.candidate : item;
           return (
             <GridTile
               key={item.id}
               item={item}
               title={def.title}
-              rect={rectFor(pos, cellW)}
+              rect={resizing ? interaction.preview : rectFor(item, cellW)}
               editing={editing}
               dragging={moving || resizing}
               offset={moving ? interaction.offset : undefined}
@@ -129,11 +134,23 @@ export function GridCanvas({
         </div>
       )}
 
-      {editing && items.length === 0 && (
+      {editing && items.length === 0 && interaction.kind === 'idle' && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <p className="rounded-xl bg-surface border border-line px-4 py-2 text-[13px] text-text-mid">Drag a tile from the palette onto the canvas.</p>
         </div>
       )}
+
+      {interaction.kind === 'place' &&
+        createPortal(
+          <div
+            aria-hidden
+            className="fixed z-[80] pointer-events-none rounded-lg border border-accent bg-surface-raised shadow-lg px-2.5 py-1.5 text-[12px] font-medium text-text"
+            style={{ left: interaction.pointer.x + 14, top: interaction.pointer.y + 14 }}
+          >
+            {TILE_BY_ID[interaction.tileId]?.title ?? 'Tile'} · {interaction.w} × {interaction.h}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

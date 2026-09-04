@@ -1,6 +1,11 @@
 import { TILE_BY_ID } from '@/components/tiles/registry';
-import { clamp, isGridCols, MIN_ROWS, packFlow, roundRows } from '@/lib/gridGeometry';
+import { clamp, clampRows, isGridCols, MIN_ROWS, packFlow } from '@/lib/gridGeometry';
 import { readJson, writeJson } from '@/lib/safeStorage';
+import type { User, UserRole } from '@/types';
+import { USER_ROLES } from '@/types';
+
+export { USER_ROLES };
+export type { UserRole };
 
 export type GridPos = { id: string; x: number; y: number; w: number; h: number };
 export type GridCols = 12 | 24 | 36;
@@ -8,7 +13,7 @@ export type GridCols = 12 | 24 | 36;
 export type DashboardLayout = {
   version: 2;
   cols: GridCols;
-  rows: number; // multiple of 12, minimum 12
+  rows: number; // any integer ≥ 12; the canvas grows one row at a time
   items: GridPos[];
 };
 
@@ -18,6 +23,9 @@ export type SavedDashboard = {
   layout: DashboardLayout;
   builtin?: boolean;
 };
+
+/** Empty canvas used when opening the builder. */
+export const BLANK_LAYOUT: DashboardLayout = { version: 2, cols: 12, rows: 12, items: [] };
 
 /** The pre-grid shape: a flow of widths in twelfths, in display order. */
 type LegacyItem = { id: string; size: number };
@@ -115,7 +123,7 @@ export function normalizeLayout(layout: DashboardLayout): DashboardLayout {
   }
   const items = [...byId.values()];
   const needed = items.reduce((n, i) => Math.max(n, i.y + i.h), MIN_ROWS);
-  const rows = Math.max(roundRows(needed), roundRows(Number(layout.rows) || MIN_ROWS));
+  const rows = Math.max(needed, clampRows(layout.rows));
   return grid(layout.cols, rows, items);
 }
 
@@ -140,11 +148,32 @@ type Store = {
   activeId: string;
   defaultId: string;
   custom: SavedDashboard[];
+  roleAssignments: Partial<Record<UserRole, string>>;
+  userAssignments: Record<string, string>;
 };
 
 type RawSaved = { id?: unknown; name?: unknown; items?: unknown; layout?: unknown; builtin?: unknown };
 
-const EMPTY_STORE: Store = { activeId: 'default', defaultId: 'default', custom: [] };
+const EMPTY_STORE: Store = { activeId: 'default', defaultId: 'default', custom: [], roleAssignments: {}, userAssignments: {} };
+
+function coerceAssignments(raw: unknown): Partial<Record<UserRole, string>> {
+  const out: Partial<Record<UserRole, string>> = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const role of USER_ROLES) {
+    const id = (raw as Record<string, unknown>)[role];
+    if (typeof id === 'string' && id) out[role] = id;
+  }
+  return out;
+}
+
+function coerceUserAssignments(raw: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const [uid, tid] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof tid === 'string' && tid) out[uid] = tid;
+  }
+  return out;
+}
 
 function coerceSaved(raw: RawSaved): SavedDashboard | null {
   if (!raw || typeof raw.id !== 'string' || typeof raw.name !== 'string') return null;
@@ -154,13 +183,21 @@ function coerceSaved(raw: RawSaved): SavedDashboard | null {
 }
 
 function loadStore(): Store {
-  const raw = readJson<{ activeId?: unknown; defaultId?: unknown; custom?: unknown }>(DASHBOARDS_KEY);
-  if (!raw || typeof raw !== 'object') return { ...EMPTY_STORE };
+  const raw = readJson<{
+    activeId?: unknown;
+    defaultId?: unknown;
+    custom?: unknown;
+    roleAssignments?: unknown;
+    userAssignments?: unknown;
+  }>(DASHBOARDS_KEY);
+  if (!raw || typeof raw !== 'object') return { ...EMPTY_STORE, roleAssignments: {}, userAssignments: {} };
   const custom = Array.isArray(raw.custom) ? (raw.custom as RawSaved[]).map(coerceSaved).filter((d): d is SavedDashboard => d !== null) : [];
   return {
     activeId: typeof raw.activeId === 'string' ? raw.activeId : 'default',
     defaultId: typeof raw.defaultId === 'string' ? raw.defaultId : 'default',
     custom,
+    roleAssignments: coerceAssignments(raw.roleAssignments),
+    userAssignments: coerceUserAssignments(raw.userAssignments),
   };
 }
 
@@ -225,6 +262,84 @@ export function saveNamedDashboard(name: string, layout: DashboardLayout): Saved
   saveStore(store);
   persistLayout(dash.layout);
   return dash;
+}
+
+export function updateNamedDashboard(id: string, patch: { name?: string; layout?: DashboardLayout }): SavedDashboard | null {
+  if (BUILTIN_DASHBOARDS.some((d) => d.id === id)) return null;
+  const store = loadStore();
+  const idx = store.custom.findIndex((d) => d.id === id);
+  if (idx < 0) return null;
+  const next: SavedDashboard = {
+    ...store.custom[idx],
+    name: patch.name?.trim() || store.custom[idx].name,
+    layout: patch.layout ? cloneLayout(patch.layout) : store.custom[idx].layout,
+  };
+  store.custom = store.custom.map((d, i) => (i === idx ? next : d));
+  saveStore(store);
+  if (store.activeId === id && patch.layout) persistLayout(next.layout);
+  return next;
+}
+
+export function roleAssignments(): Partial<Record<UserRole, string>> {
+  return { ...loadStore().roleAssignments };
+}
+
+export function userAssignments(): Record<string, string> {
+  return { ...loadStore().userAssignments };
+}
+
+export function setAssignments(next: { roleAssignments?: Partial<Record<UserRole, string>>; userAssignments?: Record<string, string>; defaultId?: string }) {
+  const store = loadStore();
+  if (next.roleAssignments) store.roleAssignments = { ...next.roleAssignments };
+  if (next.userAssignments) store.userAssignments = { ...next.userAssignments };
+  if (next.defaultId) store.defaultId = next.defaultId;
+  saveStore(store);
+}
+
+export function mergeServerTemplates(input: {
+  templates: SavedDashboard[];
+  roleAssignments: Partial<Record<UserRole, string>>;
+  userAssignments: Record<string, string>;
+  defaultId: string;
+}) {
+  const store = loadStore();
+  const byId = new Map(store.custom.map((d) => [d.id, d]));
+  for (const t of input.templates) {
+    if (!t.id || BUILTIN_DASHBOARDS.some((b) => b.id === t.id)) continue;
+    byId.set(t.id, { id: t.id, name: t.name, layout: cloneLayout(t.layout) });
+  }
+  store.custom = [...byId.values()];
+  store.roleAssignments = { ...input.roleAssignments };
+  store.userAssignments = { ...input.userAssignments };
+  if (input.defaultId) store.defaultId = input.defaultId;
+  saveStore(store);
+}
+
+export function exportCustomStore(): {
+  templates: SavedDashboard[];
+  roleAssignments: Partial<Record<UserRole, string>>;
+  userAssignments: Record<string, string>;
+  defaultId: string;
+} {
+  const store = loadStore();
+  return {
+    templates: store.custom.map((d) => ({ ...d, layout: cloneLayout(d.layout) })),
+    roleAssignments: { ...store.roleAssignments },
+    userAssignments: { ...store.userAssignments },
+    defaultId: store.defaultId,
+  };
+}
+
+/** User-specific assignment, then that user's role, then the estate default. */
+export function resolveDashboardId(user: Pick<User, 'id' | 'role'> | null | undefined): string {
+  const store = loadStore();
+  if (user?.id && store.userAssignments[user.id]) return store.userAssignments[user.id]!;
+  if (user?.role && store.roleAssignments[user.role]) return store.roleAssignments[user.role]!;
+  return store.defaultId;
+}
+
+export function findDashboard(id: string): SavedDashboard | undefined {
+  return allDashboards().find((d) => d.id === id);
 }
 
 export function deleteDashboard(id: string) {

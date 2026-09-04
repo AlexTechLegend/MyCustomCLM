@@ -1,4 +1,4 @@
-import type { AutomationEvent, Certificate, DetectedFormat, IdentityTemplate, OutputSpec, Profile, Renewal, Settings, TagGroup } from '@/types';
+import type { AutomationEvent, Certificate, DetectedFormat, IdentityTemplate, OutputSpec, Profile, Renewal, Settings, TagGroup, User, UserRole } from '@/types';
 
 export class ApiError extends Error {
   constructor(message: string, public status: number, public command?: string, public stderr?: string) {
@@ -139,6 +139,22 @@ export const api = {
 
   settings: () => request<Settings>('/api/settings'),
   saveSettings: (s: Partial<Settings>) => request<Settings>('/api/settings', json('PUT', s)),
+  me: () => request<{ user: User | null; authEnabled: boolean }>('/api/auth/me'),
+  users: () => request<User[]>('/api/users'),
+  dashboardTemplates: () =>
+    request<{
+      templates: { id: string; name: string; layout: { version: 2; cols: 12 | 24 | 36; rows: number; items: { id: string; x: number; y: number; w: number; h: number }[] } }[];
+      roleAssignments: Partial<Record<UserRole, string>>;
+      userAssignments: Record<string, string>;
+      defaultId: string;
+      resolvedId: string;
+    }>('/api/dashboard-templates'),
+  saveDashboardTemplates: (body: {
+    templates: { id: string; name: string; layout: unknown }[];
+    roleAssignments: Partial<Record<UserRole, string>>;
+    userAssignments: Record<string, string>;
+    defaultId: string;
+  }) => request<typeof body>('/api/dashboard-templates', json('PUT', body)),
   ca: () => request<CaInfo>('/api/ca'),
   createCa: (body: { commonName: string; organisation: string; days: number }) => request<{ ok: true }>('/api/ca', json('POST', body)),
   deleteCa: () => request<void>('/api/ca', { method: 'DELETE' }),

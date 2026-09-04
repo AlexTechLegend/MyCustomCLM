@@ -9,6 +9,7 @@ import type { Certificate, Profile } from '@/types';
 
 const GO_TO: { label: string; to: string; keywords?: string }[] = [
   { label: 'Dashboard', to: '/' },
+  { label: 'Dashboard builder', to: '/dashboard/builder', keywords: 'edit layout template' },
   { label: 'Certificates', to: '/certificates' },
   { label: 'Renewals', to: '/renewals' },
   { label: 'Expiry calendar', to: '/calendar', keywords: 'schedule expiry' },

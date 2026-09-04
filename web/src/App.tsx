@@ -5,6 +5,7 @@ import { Calendar } from './pages/Calendar';
 import { CertificateDetail } from './pages/CertificateDetail';
 import { Certificates } from './pages/Certificates';
 import { Dashboard } from './pages/Dashboard';
+import { DashboardBuilder } from './pages/DashboardBuilder';
 import { ImportCertificate } from './pages/ImportCertificate';
 import { ProfileEditor } from './pages/ProfileEditor';
 import { Profiles } from './pages/Profiles';
@@ -19,6 +20,7 @@ export default function App() {
     <Routes>
       <Route element={<Layout />}>
         <Route index element={<Dashboard />} />
+        <Route path="dashboard/builder" element={<DashboardBuilder />} />
         <Route path="certificates" element={<Certificates />} />
         <Route path="certificates/import" element={<ImportCertificate />} />
         <Route path="certificates/:id" element={<CertificateDetail />} />

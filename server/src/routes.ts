@@ -29,6 +29,7 @@ import {
   updateCertificate,
 } from './services/certificates.js';
 import { dashboard } from './services/dashboard.js';
+import { getTemplateStore, resolveTemplateId, saveTemplateStore } from './services/dashboardTemplates.js';
 import { listEvents, recordEvent, timeSavedSummary } from './services/events.js';
 import { createIdentityTemplate, deleteIdentityTemplate, getIdentityTemplate, listIdentityTemplates, updateIdentityTemplate } from './services/identities.js';
 import { createProfile, deleteProfile, getProfile, listProfiles, profileAppliesTo, updateProfile } from './services/profiles.js';
@@ -136,6 +137,20 @@ api.get(
 );
 
 api.get('/dashboard', wrap((_req, res) => res.json(dashboard())));
+
+api.get(
+  '/dashboard-templates',
+  wrap((req, res) => {
+    const store = getTemplateStore();
+    const user = (req as AuthedRequest).user;
+    res.json({ ...store, resolvedId: resolveTemplateId(store, user) });
+  }),
+);
+api.put(
+  '/dashboard-templates',
+  requireRole('admin'),
+  wrap((req, res) => res.json(saveTemplateStore(req.body))),
+);
 
 // Certificates -------------------------------------------------------------
 

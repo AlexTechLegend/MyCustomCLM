@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { TILE_BY_ID } from '@/components/tiles/registry';
 import type { DashboardLayout, GridPos } from '@/lib/dashboardStore';
-import { canvasHeight, cellWidth, clamp, collides, GAP, inBounds, pxToCols, pxToRows, ROW_HEIGHT, scaleUnits } from '@/lib/gridGeometry';
+import { cellWidth, clamp, collides, GAP, inBounds, pxToCols, pxToRows, rectFor, ROW_HEIGHT, scaleUnits, type PxRect } from '@/lib/gridGeometry';
 
 export type Handle = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 
@@ -9,9 +9,9 @@ type Px = { x: number; y: number };
 
 export type Interaction =
   | { kind: 'idle' }
-  | { kind: 'place'; tileId: string; w: number; h: number; candidate: GridPos | null; valid: boolean }
+  | { kind: 'place'; tileId: string; w: number; h: number; candidate: GridPos | null; valid: boolean; pointer: Px }
   | { kind: 'move'; id: string; origin: GridPos; offset: Px; candidate: GridPos; valid: boolean }
-  | { kind: 'resize'; id: string; origin: GridPos; handle: Handle; candidate: GridPos; valid: boolean };
+  | { kind: 'resize'; id: string; origin: GridPos; handle: Handle; candidate: GridPos; valid: boolean; preview: PxRect };
 
 const IDLE: Interaction = { kind: 'idle' };
 
@@ -19,9 +19,40 @@ function samePos(a: GridPos, b: GridPos) {
   return a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
 }
 
+function ensureRows(layout: DashboardLayout, need: number): DashboardLayout {
+  if (need <= layout.rows) return layout;
+  return { ...layout, rows: need };
+}
+
+function pixelResize(origin: GridPos, handle: Handle, dx: number, dy: number, minW: number, minH: number, cellW: number, cols: number): PxRect {
+  const o = rectFor(origin, cellW);
+  const minWpx = minW * cellW + (minW - 1) * GAP;
+  const minHpx = minH * ROW_HEIGHT + (minH - 1) * GAP;
+  const maxRight = cols * cellW + (cols - 1) * GAP;
+  let { left, top, width, height } = o;
+  if (handle.includes('e')) width = clamp(o.width + dx, minWpx, Math.max(minWpx, maxRight - left));
+  if (handle.includes('w')) {
+    const nextLeft = clamp(o.left + dx, 0, o.left + o.width - minWpx);
+    width = o.left + o.width - nextLeft;
+    left = nextLeft;
+  }
+  if (handle.includes('s')) height = Math.max(minHpx, o.height + dy);
+  if (handle.includes('n')) {
+    const nextTop = clamp(o.top + dy, 0, o.top + o.height - minHpx);
+    height = o.top + o.height - nextTop;
+    top = nextTop;
+  }
+  return { left, top, width, height };
+}
+
+function rowsNeededForPx(top: number, height: number): number {
+  return Math.max(1, Math.ceil((top + height + GAP) / (ROW_HEIGHT + GAP)));
+}
+
 /**
- * Pointer-driven place / move / resize on the grid canvas. All geometry is
- * resolved against the live canvas rectangle so scrolling mid-drag stays correct.
+ * Pointer-driven place / move / resize. Palette drags do not capture the
+ * pointer so the canvas can keep receiving coordinates; move/resize capture
+ * on the handle so a fast flick never drops the gesture.
  */
 export function useGridInteraction({ layout, onChange }: { layout: DashboardLayout; onChange: (next: DashboardLayout) => void }) {
   const canvasEl = useRef<HTMLDivElement | null>(null);
@@ -47,7 +78,6 @@ export function useGridInteraction({ layout, onChange }: { layout: DashboardLayo
 
   const [interaction, setInteraction] = useState<Interaction>(IDLE);
 
-  // Refs let the window listeners read the latest values without re-binding per frame.
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
   const cellWRef = useRef(cellW);
@@ -75,7 +105,7 @@ export function useGridInteraction({ layout, onChange }: { layout: DashboardLayo
       try {
         (e.currentTarget as Element).setPointerCapture(e.pointerId);
       } catch {
-        /* capture is best-effort */
+        /* best-effort */
       }
       startPx.current = toCanvas(e);
       return startPx.current !== null;
@@ -96,93 +126,113 @@ export function useGridInteraction({ layout, onChange }: { layout: DashboardLayo
     (id: string, handle: Handle, e: ReactPointerEvent) => {
       const item = layoutRef.current.items.find((i) => i.id === id);
       if (!item || !begin(e)) return;
-      setInteraction({ kind: 'resize', id, origin: item, handle, candidate: item, valid: true });
+      setInteraction({
+        kind: 'resize',
+        id,
+        origin: item,
+        handle,
+        candidate: item,
+        valid: true,
+        preview: rectFor(item, cellWRef.current),
+      });
     },
     [begin],
   );
 
-  const startPlace = useCallback(
-    (tileId: string, e: ReactPointerEvent) => {
-      const def = TILE_BY_ID[tileId];
-      if (!def) return;
-      if (e.button !== 0) return;
-      e.preventDefault();
-      try {
-        (e.currentTarget as Element).setPointerCapture(e.pointerId);
-      } catch {
-        /* best-effort */
-      }
-      const { cols } = layoutRef.current;
-      setInteraction({ kind: 'place', tileId, w: scaleUnits(def.defaultW, cols), h: def.defaultH, candidate: null, valid: false });
-    },
-    [],
-  );
+  const startPlace = useCallback((tileId: string, e: ReactPointerEvent) => {
+    const def = TILE_BY_ID[tileId];
+    if (!def || e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const { cols } = layoutRef.current;
+    setInteraction({
+      kind: 'place',
+      tileId,
+      w: scaleUnits(def.defaultW, cols),
+      h: def.defaultH,
+      candidate: null,
+      valid: false,
+      pointer: { x: e.clientX, y: e.clientY },
+    });
+  }, []);
 
   const cancel = useCallback(() => setInteraction(IDLE), []);
 
   useEffect(() => {
     if (interaction.kind === 'idle') return;
 
-    const onMove = (e: PointerEvent) => {
+    const applyPointer = (e: PointerEvent): Interaction => {
       const st = interactionRef.current;
-      const { cols, rows, items } = layoutRef.current;
+      const layout = layoutRef.current;
+      const { cols, items } = layout;
       const cw = cellWRef.current;
       const p = toCanvas(e);
-      if (!p) return;
+      if (!p) return st;
 
+      let next: Interaction = st;
       if (st.kind === 'place') {
-        const inside = p.x >= 0 && p.y >= 0 && p.x <= canvasWidthRef.current && p.y <= canvasHeight(rows);
-        if (!inside) {
-          if (st.candidate) setInteraction({ ...st, candidate: null, valid: false });
-          return;
+        const overCanvas = p.x >= -24 && p.x <= canvasWidthRef.current + 24 && p.y >= -24;
+        if (!overCanvas) {
+          next = { ...st, candidate: null, valid: false, pointer: { x: e.clientX, y: e.clientY } };
+        } else {
+          const x = clamp(Math.round(p.x / (cw + GAP) - st.w / 2), 0, Math.max(0, cols - st.w));
+          const y = Math.max(0, Math.round(p.y / (ROW_HEIGHT + GAP) - st.h / 2));
+          const need = y + st.h;
+          if (need > layout.rows) onChangeRef.current(ensureRows(layout, need));
+          const candidate: GridPos = { id: st.tileId, x, y, w: st.w, h: st.h };
+          const rows = Math.max(layout.rows, need);
+          next = { ...st, candidate, valid: inBounds(candidate, cols, rows) && !collides(candidate, items), pointer: { x: e.clientX, y: e.clientY } };
         }
-        const x = clamp(Math.round(p.x / (cw + GAP) - st.w / 2), 0, Math.max(0, cols - st.w));
-        const y = clamp(Math.round(p.y / (ROW_HEIGHT + GAP) - st.h / 2), 0, Math.max(0, rows - st.h));
-        const candidate: GridPos = { id: st.tileId, x, y, w: st.w, h: st.h };
-        const valid = inBounds(candidate, cols, rows) && !collides(candidate, items);
-        setInteraction({ ...st, candidate, valid });
-        return;
+      } else {
+        const s = startPx.current;
+        if (!s) return st;
+        const dx = p.x - s.x;
+        const dy = p.y - s.y;
+        const dc = pxToCols(dx, cw);
+        const dr = pxToRows(dy);
+
+        if (st.kind === 'move') {
+          const o = st.origin;
+          const x = clamp(o.x + dc, 0, cols - o.w);
+          const y = Math.max(0, o.y + dr);
+          const candidate: GridPos = { ...o, x, y };
+          const need = candidate.y + candidate.h;
+          if (need > layout.rows) onChangeRef.current(ensureRows(layout, need));
+          next = { ...st, offset: { x: dx, y: dy }, candidate, valid: !collides(candidate, items, st.id) };
+        } else if (st.kind === 'resize') {
+          const def = TILE_BY_ID[st.id];
+          const minW = scaleUnits(def?.minW ?? 1, cols);
+          const minH = def?.minH ?? 1;
+          const o = st.origin;
+          let { x, y, w, h } = o;
+          if (st.handle.includes('e')) w = clamp(o.w + dc, minW, cols - o.x);
+          if (st.handle.includes('w')) {
+            const nx = clamp(o.x + dc, 0, o.x + o.w - minW);
+            w = o.x + o.w - nx;
+            x = nx;
+          }
+          if (st.handle.includes('s')) h = Math.max(minH, o.h + dr);
+          if (st.handle.includes('n')) {
+            const ny = clamp(o.y + dr, 0, o.y + o.h - minH);
+            h = o.y + o.h - ny;
+            y = ny;
+          }
+          const candidate: GridPos = { id: st.id, x, y, w, h };
+          const preview = pixelResize(o, st.handle, dx, dy, minW, minH, cw, cols);
+          const need = Math.max(candidate.y + candidate.h, rowsNeededForPx(preview.top, preview.height));
+          if (need > layout.rows) onChangeRef.current(ensureRows(layout, need));
+          const rows = Math.max(layout.rows, need);
+          next = { ...st, candidate, preview, valid: inBounds(candidate, cols, rows) && !collides(candidate, items, st.id) };
+        }
       }
 
-      const s = startPx.current;
-      if (!s) return;
-      const dx = p.x - s.x;
-      const dy = p.y - s.y;
-      const dc = pxToCols(dx, cw);
-      const dr = pxToRows(dy);
-
-      if (st.kind === 'move') {
-        const o = st.origin;
-        const candidate: GridPos = { ...o, x: clamp(o.x + dc, 0, cols - o.w), y: clamp(o.y + dr, 0, rows - o.h) };
-        setInteraction({ ...st, offset: { x: dx, y: dy }, candidate, valid: !collides(candidate, items, st.id) });
-        return;
-      }
-
-      if (st.kind === 'resize') {
-        const def = TILE_BY_ID[st.id];
-        const minW = scaleUnits(def?.minW ?? 1, cols);
-        const minH = def?.minH ?? 1;
-        const o = st.origin;
-        let { x, y, w, h } = o;
-        if (st.handle.includes('e')) w = clamp(o.w + dc, minW, cols - o.x);
-        if (st.handle.includes('w')) {
-          const nx = clamp(o.x + dc, 0, o.x + o.w - minW);
-          w = o.x + o.w - nx;
-          x = nx;
-        }
-        if (st.handle.includes('s')) h = clamp(o.h + dr, minH, rows - o.y);
-        if (st.handle.includes('n')) {
-          const ny = clamp(o.y + dr, 0, o.y + o.h - minH);
-          h = o.y + o.h - ny;
-          y = ny;
-        }
-        const candidate: GridPos = { id: st.id, x, y, w, h };
-        setInteraction({ ...st, candidate, valid: inBounds(candidate, cols, rows) && !collides(candidate, items, st.id) });
-      }
+      interactionRef.current = next;
+      setInteraction(next);
+      return next;
     };
 
-    const onUp = () => {
-      const st = interactionRef.current;
+    const onUp = (e: PointerEvent) => {
+      const st = applyPointer(e);
       const layout = layoutRef.current;
       if (st.kind === 'place' && st.valid && st.candidate) {
         onChangeRef.current({ ...layout, items: [...layout.items, st.candidate] });
@@ -200,12 +250,12 @@ export function useGridInteraction({ layout, onChange }: { layout: DashboardLayo
       }
     };
 
-    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointermove', applyPointer);
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onCancel);
     window.addEventListener('keydown', onKey);
     return () => {
-      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointermove', applyPointer);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onCancel);
       window.removeEventListener('keydown', onKey);
